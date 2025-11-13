@@ -22,11 +22,13 @@ enum TestBeaconDefinition {
     ThirdTMValue(TestVector),
 }
 
+use TestBeaconDefinition::*;
+
 #[test]
 fn test() {
     let mut beacon = TestBeacon::new();
     println!("len {}", beacon.bytes().len());
-    println!("len {:?}", TestBeaconDefinition::TestBeacon_sizes);
+    println!("len {:?}", TestBeaconDefinition::SIZES);
     beacon.insert(TestBeaconDefinition::SecondTMValue(TestValue { val: 3 }));
     beacon.insert(TestBeaconDefinition::FirstTMValue(1234));
     beacon.insert(TestBeaconDefinition::ThirdTMValue(TestVector { x: 3, y: 3.3, z: TestValue { val: 1 }}));

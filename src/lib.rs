@@ -9,7 +9,7 @@ pub use macros::TMValue;
 pub use telemetry_value::TMValue;
 
 pub trait BeaconDefinition {
-    fn get_cell(&self) -> (usize, &[u8]);
+    fn transfer_cell(&self, storage: &mut [u8]);
 }
 
 pub struct Beacon<DEF: BeaconDefinition, const N: usize> {
@@ -24,8 +24,7 @@ impl<DEF: BeaconDefinition, const N: usize> Beacon<DEF, N> {
         }
     }
     pub fn insert(&mut self, topic: DEF) {
-        let (pos, bytes) = topic.get_cell();
-        self.storage[pos..(pos+bytes.len())].copy_from_slice(bytes);
+        topic.transfer_cell(&mut self.storage);
     }
     pub fn bytes(&self) -> &[u8] {
         &self.storage
