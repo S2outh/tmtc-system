@@ -1,3 +1,5 @@
+use std::iter::once;
+
 use heck::ToSnakeCase;
 use proc_macro2::TokenStream;
 use quote::{ToTokens, quote};
@@ -21,7 +23,13 @@ fn generate_module_recursive(address: Vec<syn::Ident>, items: &Vec<Item>) -> (To
                         .parse_args_with(Punctuated::<Meta, Token![,]>::parse_separated_nonempty)
                         .expect(&format!("Could not parse {} attribute parameters", TM_VALUE_MACRO_NAME));
                     let ty = &v.ident;
-                    let ty_addr: TokenStream = address.iter().map(|i| i.to_token_stream()).intersperse("::".parse().unwrap()).collect();
+                    let ty_addr: TokenStream = address
+                        .iter()
+                        .skip(1)
+                        .chain(once(ty))
+                        .map(|i| i.to_token_stream())
+                        .intersperse("::".parse().unwrap())
+                        .collect();
                     let tmty = attr_content.get(0)
                         .expect(&format!("{} attribute must contain at least a type and an id parameter", TM_VALUE_MACRO_NAME))
                         .require_path_only()
@@ -32,7 +40,11 @@ fn generate_module_recursive(address: Vec<syn::Ident>, items: &Vec<Item>) -> (To
                         .filter(|m| m.path.get_ident().filter(|p| *p == "id").is_some())
                         .map(|m| if let syn::Expr::Lit(value) = &m.value { value } else { panic!("unexpected attribute value type") })
                         .next().expect("no id specified");
-                    let str_base_addr: String = address.iter().map(|i| i.to_string()).intersperse(String::from(".")).collect();
+                    let str_base_addr: String = address
+                        .iter()
+                        .map(|i| i.to_string())
+                        .intersperse(String::from("."))
+                        .collect();
                     let address = format!("{}.{}", str_base_addr, attr_content
                         .iter()
                         .filter_map(|m| m.require_name_value().ok())
@@ -54,10 +66,10 @@ fn generate_module_recursive(address: Vec<syn::Ident>, items: &Vec<Item>) -> (To
 
                         },
                         quote!{
-                            #id => &#ty_addr::#ty,
+                            #id => &#ty_addr,
                         },
                         quote!{
-                            #address => &#ty_addr::#ty,
+                            #address => &#ty_addr,
                         },
                     )
                 },

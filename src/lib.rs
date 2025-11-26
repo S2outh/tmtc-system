@@ -5,9 +5,9 @@
 
 mod telemetry_value;
 
-//pub use macros::beacon;
-pub use macros::tm_definition_macro_attribute;
 pub use macros::TMValue;
+pub use macros::beacon;
+pub use macros::telemetry_definition;
 
 pub use telemetry_value::TMValue;
 pub use telemetry_value::DynTMValue;

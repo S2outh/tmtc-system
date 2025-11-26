@@ -5,62 +5,28 @@ use syn::{Token,
     Meta
 };
 
-const TM_VALUE_MACRO_NAME: &str = "tmv";
-
-pub fn impl_macro(beacon_path: syn::Path, ast: syn::DeriveInput) -> TokenStream {
-    let beacon_definition_name = &ast.ident;
-    let beacon_name = &beacon_path.get_ident().unwrap();
-    let syn::Data::Enum(bd_enum) = ast.data else {
-        panic!("beacon defintion is not an enum");
-    };
+pub fn impl_macro(args: Punctuated::<Meta, Token![,]>) -> TokenStream {
+    let mut args_iter = args
+        .iter()
+        .map(|m| if let Meta::Path(path) = m { path } else { panic!("args should all be valid paths") });
     
-    let bd_enum_variants = bd_enum.variants
+    let beacon_name = args_iter.next().expect("args should include beacon name");
+    let telemetry_definition_root_path = args_iter.next().expect("args should include tm definition path");
+    let tm_definitions: Vec<_> = args_iter.collect();
+    let tm_sizes = tm_definitions
         .iter()
-        .map(|v| {
-            let mut var = v.clone();
-            var.attrs = vec![];
-            var
+        .map(|p| quote!{
+            #telemetry_definition_root_path::#p::BYTE_SIZE
         });
+    let tm_values_count = tm_definitions.len();
     
-    let _attrs_metas = bd_enum.variants
-        .iter()
-        .map(|v| 
-            v.attrs
-                .iter()
-                .find(|attr| 
-                    attr.path()
-                    .is_ident(TM_VALUE_MACRO_NAME)
-                )
-                .expect(&format!("Enum variant {} has no {} attribute", &v.ident, TM_VALUE_MACRO_NAME))
-                .parse_args_with(Punctuated::<Meta, Token![,]>::parse_separated_nonempty)
-                .expect(&format!("Could not parse {} attribute parameters", TM_VALUE_MACRO_NAME))
-        );
-    let enum_types = bd_enum.variants
-        .iter()
-        .map(|v| {
-            assert_eq!(v.fields.len(), 1);
-            v.fields.iter().next().unwrap()
-        });
-    let get_cell_functions = bd_enum.variants
-        .iter()
-        .map(|v| &v.ident )
-        .enumerate()
-        .map(|(i, v)| quote!{
-            #beacon_definition_name::#v(tm_value) => {
-                let bytes = tm_value.to_bytes();
-                let pos = Self::get_pos(#i);
-                storage[pos..(pos+bytes.len())].copy_from_slice(&bytes);
-            }
-        });
-    let enum_len: usize = bd_enum.variants.len();
-
     quote! {
-        enum #beacon_definition_name {
-            #(#bd_enum_variants),*
+        struct #beacon_name {
+            storage: [u8; Self::BYTE_SIZE],
         }
-
-        impl #beacon_definition_name {
-            const SIZES: [usize; #enum_len] = [#(<#enum_types as TMValue>::BYTE_SIZE),*];
+        impl #beacon_name {
+            const SIZES: [usize; #tm_values_count] = [#(#tm_sizes),*];
+            const BYTE_SIZE: usize = Self::get_pos(Self::SIZES.len());
             const fn get_pos(index: usize) -> usize {
                 let mut len = 0;
                 let mut i = 0;
@@ -70,18 +36,23 @@ pub fn impl_macro(beacon_path: syn::Path, ast: syn::DeriveInput) -> TokenStream 
                 }
                 len
             }
-            const fn size() -> usize {
-                Self::get_pos(Self::SIZES.len())
-            }
-        }
 
-        type #beacon_name = Beacon<#beacon_definition_name, {#beacon_definition_name::size()}>;
-
-        impl BeaconDefinition for #beacon_definition_name {
-            fn transfer_cell(&self, storage: &mut [u8]) {
-                match self {
-                    #(#get_cell_functions),*
+            pub fn new() -> Self {
+                Self {
+                    storage: [0u8; Self::BYTE_SIZE],
                 }
+            }
+            
+            pub fn from_bytes(bytes: &[u8]) -> Result<Self, <&[u8] as TryInto<[u8; Self::BYTE_SIZE]>>::Error> {
+                Ok(Self {
+                    storage: bytes.try_into()?
+                })
+            }
+            fn bytes(&self) -> &[u8] {
+                &self.storage
+            }
+            pub fn flush(&mut self) {
+                self.storage.fill(0);
             }
         }
     }
