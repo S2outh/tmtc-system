@@ -1,13 +1,14 @@
 
+// # Trait definitions
 pub trait DynTMValue {
-    fn read(&mut self, bytes: &[u8]);
-    fn write(&self, mem: &mut [u8]);
+    fn read(&mut self, bytes: &[u8]) -> usize;
+    fn write(&self, mem: &mut [u8]) -> usize;
     fn type_name(&self) -> &str;
 }
 
-pub trait TMValue: DynTMValue + Default {
+pub trait TMValue: DynTMValue {
     const BYTE_SIZE: usize;
-    fn from_bytes(bytes: [u8; Self::BYTE_SIZE]) -> Self {
+    fn from_bytes(bytes: [u8; Self::BYTE_SIZE]) -> Self where Self: Default {
         let mut value: Self = Self::default();
         Self::read(&mut value, &bytes);
         value
@@ -19,16 +20,18 @@ pub trait TMValue: DynTMValue + Default {
     }
 }
 
+// # Primitives
 macro_rules! primitive_value {
     ($type:ident, $name:literal) => {
         impl DynTMValue for $type {
-            fn read(&mut self, bytes: &[u8]) {
-                *self = Self::from_le_bytes(bytes.try_into().expect("wrong memory provided"));
+            fn read(&mut self, bytes: &[u8]) -> usize {
+                *self = Self::from_le_bytes(bytes[..Self::BYTE_SIZE].try_into().expect("wrong memory provided"));
+                Self::BYTE_SIZE
             }
-            fn write(&self, mem: &mut [u8]) {
+            fn write(&self, mem: &mut [u8]) -> usize {
                 let bytes = self.to_le_bytes();
-                assert_eq!(bytes.len(), mem.len(), "wrong memory provided");
-                mem.copy_from_slice(&bytes);
+                mem[..Self::BYTE_SIZE].copy_from_slice(&bytes);
+                Self::BYTE_SIZE
             }
             fn type_name(&self) -> &str {
                 $name
@@ -54,3 +57,27 @@ primitive_value!(i128, "int128");
 
 primitive_value!(f32, "float32");
 primitive_value!(f64, "float64");
+
+// # Arrays
+impl<const N: usize, T: TMValue> DynTMValue for [T; N] {
+    fn read(&mut self, bytes: &[u8]) -> usize {
+        let mut pos = 0;
+        for i in 0..N {
+            pos += self[i].read(&bytes[pos..])
+        }
+        pos
+    }
+    fn write(&self, mem: &mut [u8]) -> usize {
+        let mut pos = 0;
+        for i in 0..N {
+            pos += self[i].write(&mut mem[pos..])
+        }
+        pos
+    }
+    fn type_name(&self) -> &str {
+        todo!()
+    }
+}
+impl<const N: usize, T: TMValue> TMValue for [T; N] {
+    const BYTE_SIZE: usize = N * T::BYTE_SIZE;
+}
