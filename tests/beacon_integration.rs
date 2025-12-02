@@ -26,13 +26,13 @@ mod telemetry {
     }
 }
 
-beacon!(TestBeacon, telemetry, FirstTMValue, SecondTMValue, some_other_mod::ThirdTMValue);
+beacon!(TestBeacon, telemetry, header(0, 1, 2, 3), values(FirstTMValue, SecondTMValue, some_other_mod::ThirdTMValue));
 
 #[test]
 fn beacon_creation() {
     let beacon = TestBeacon::new();
 
-    let sizes = [4, (4), (2 + 4 + 4)];
+    let sizes = [4, 4, (4), (2 + 4 + 4)];
     assert_eq!(beacon.bytes().len(), sizes.iter().sum());
     assert_eq!(TestBeacon::SIZES, sizes);
 }
@@ -48,11 +48,12 @@ fn beacon_insertion() {
     beacon.insert(&telemetry::SecondTMValue, &second_value).unwrap();
     beacon.insert(&telemetry::some_other_mod::ThirdTMValue, &third_value).unwrap();
     
-    assert_eq!(&beacon.bytes()[0..4], first_value.to_le_bytes());
-    assert_eq!(&beacon.bytes()[4..8], second_value.val.to_le_bytes());
-    assert_eq!(&beacon.bytes()[8..10], third_value.x.to_le_bytes());
-    assert_eq!(&beacon.bytes()[10..14], third_value.y.to_le_bytes());
-    assert_eq!(&beacon.bytes()[14..18], third_value.z.val.to_le_bytes());
+    assert_eq!(&beacon.bytes()[0..4], [0, 1, 2, 3]);
+    assert_eq!(&beacon.bytes()[4..8], first_value.to_le_bytes());
+    assert_eq!(&beacon.bytes()[8..12], second_value.val.to_le_bytes());
+    assert_eq!(&beacon.bytes()[12..14], third_value.x.to_le_bytes());
+    assert_eq!(&beacon.bytes()[14..18], third_value.y.to_le_bytes());
+    assert_eq!(&beacon.bytes()[18..22], third_value.z.val.to_le_bytes());
 }
 
 #[test]

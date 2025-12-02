@@ -1,32 +1,58 @@
+use std::iter::once;
+
 use proc_macro2::TokenStream;
 use quote::{quote};
-use syn::{Token,
-    punctuated::Punctuated,
-    Meta
+use syn::{LitInt, Meta, Path, Token, punctuated::Punctuated
 };
 
 pub fn impl_macro(args: Punctuated::<Meta, Token![,]>) -> TokenStream {
-    let mut args_iter = args
-        .iter()
-        .map(|m| if let Meta::Path(path) = m { path } else { panic!("args should all be valid paths") });
+    let mut args_iter = args.iter();
+    let path_args_iter: Vec<_> = args_iter
+        .by_ref()
+        .take(2)
+        .map(|m| if let Meta::Path(path) = m { path } else { panic!("first two args should be valid paths") })
+        .collect();
     
-    let beacon_name = args_iter.next().expect("args should include beacon name");
-    let telemetry_definition_root_path = args_iter.next().expect("args should include tm definition path");
-    let tm_definitions: Vec<_> = args_iter.collect();
-    let tm_sizes = tm_definitions
+    let beacon_name = path_args_iter.get(0).expect("args should include beacon name");
+    let telemetry_definition_root_path = path_args_iter.get(1).expect("args should include tm definition path");
+
+    let list_args_iter: Vec<_> = args_iter
+        .by_ref()
+        .take(2)
+        .map(|m| if let Meta::List(list) = m { list } else { panic!("last two args should be valid lists") })
+        .collect();
+
+    let header_arg = list_args_iter.get(0).expect("args should contain header list");
+    let tm_definitions_arg = list_args_iter.get(1).expect("args should contain tm definitions list ");
+
+    let header: Vec<_> = header_arg
+        .parse_args_with(Punctuated::<LitInt, Token![,]>::parse_separated_nonempty)
+        .expect("could not parse header list").into_iter().collect();
+    let header_len = header.len();
+
+    let tm_definitions: Vec<_> = tm_definitions_arg
+        .parse_args_with(Punctuated::<Path, Token![,]>::parse_separated_nonempty)
+        .expect("could not parse header list").into_iter().collect();
+
+    let tm_sizes = 
+        once(quote!{ #header_len })
+        .chain(
+        tm_definitions
         .iter()
         .map(|p| quote!{
             #telemetry_definition_root_path::#p::BYTE_SIZE
-        });
+        }));
     let bounds = tm_definitions
         .iter()
         .enumerate()
+        .map(|(i, p)| (i+1, p))
         .map(|(i, p)| quote!{
             #telemetry_definition_root_path::#p::ID => (Self::get_pos(#i), Self::SIZES[#i]),
         });
     let insertions = tm_definitions
         .iter()
         .enumerate()
+        .map(|(i, p)| (i+1, p))
         .map(|(i, p)| quote!{
             #telemetry_definition_root_path::#p::ID => {
                 let mut bytes = [0u8; Self::SIZES[#i]];
@@ -34,7 +60,7 @@ pub fn impl_macro(args: Punctuated::<Meta, Token![,]>) -> TokenStream {
                 self.insert_slice(telemetry_definition, &bytes)?;
             },
         });
-    let tm_values_count = tm_definitions.len();
+    let tm_values_count = tm_definitions.len() + 1;
     
     quote! {
         struct #beacon_name {
@@ -54,8 +80,10 @@ pub fn impl_macro(args: Punctuated::<Meta, Token![,]>) -> TokenStream {
             }
 
             pub fn new() -> Self {
+                let mut storage = [0u8; Self::BYTE_SIZE];
+                storage[..#header_len].copy_from_slice(&[#(#header),*]);
                 Self {
-                    storage: [0u8; Self::BYTE_SIZE],
+                    storage,
                 }
             }
             
@@ -71,6 +99,7 @@ pub fn impl_macro(args: Punctuated::<Meta, Token![,]>) -> TokenStream {
             }
             fn flush(&mut self) {
                 self.storage.fill(0);
+                self.storage[..#header_len].copy_from_slice(&[#(#header),*]);
             }
             fn get_bounds(&self, telemetry_definition: &dyn DynTelemetryDefinition) -> Result<(usize, usize), BoundsError> {
                 Ok(match telemetry_definition.id() {
