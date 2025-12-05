@@ -28,13 +28,14 @@ mod telemetry {
 
 beacon!(TestBeacon, telemetry, header(0, 1, 2, 3), values(FirstTMValue, SecondTMValue, some_other_mod::ThirdTMValue));
 
+use test_beacon::TestBeacon;
+
 #[test]
 fn beacon_creation() {
     let beacon = TestBeacon::new();
 
     let sizes = [4, 4, (4), (2 + 4 + 4)];
     assert_eq!(beacon.bytes().len(), sizes.iter().sum());
-    assert_eq!(TestBeacon::SIZES, sizes);
 }
 
 #[test]

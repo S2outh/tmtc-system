@@ -5,6 +5,7 @@
 
 mod telemetry_value;
 
+// macro reexports
 pub use macros::TMValue;
 pub use macros::beacon;
 pub use macros::telemetry_definition;
@@ -16,9 +17,14 @@ pub const trait DynTelemetryDefinition {
     fn id(&self) -> u32;
     fn address(&self) -> &str;
 }
-pub trait TelemetryDefinition: DynTelemetryDefinition {
-    type TMValueType: TMValue;
-    const BYTE_SIZE: usize = Self::TMValueType::BYTE_SIZE;
+/// Reexports that should only be used by the macro generated code
+pub mod internal {
+    use crate::TMValue;
+    pub trait TelemetryDefinition: crate::DynTelemetryDefinition {
+        type TMValueType: crate::TMValue;
+        const BYTE_SIZE: usize = Self::TMValueType::BYTE_SIZE;
+        const ID: u32;
+    }
 }
 
 #[derive(Debug)]

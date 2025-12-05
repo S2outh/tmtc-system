@@ -55,15 +55,13 @@ fn generate_module_recursive(address: Vec<syn::Ident>, items: &Vec<Item>) -> (To
                     (
                         quote!{
                             pub struct #ty;
-                            impl #ty {
-                                pub const ID: u32 = #id;
-                            }
                             impl const DynTelemetryDefinition for #ty {
-                                fn id(&self) -> u32 { Self::ID }
+                                fn id(&self) -> u32 { <Self as TelemetryDefinition>::ID }
                                 fn address(&self) -> &str { #address }
                             }
                             impl TelemetryDefinition for #ty {
                                 type TMValueType = #tmty;
+                                const ID: u32 = #id;
                             }
 
                         },
@@ -112,7 +110,7 @@ pub fn impl_macro(ast: syn::Item) -> TokenStream {
 
     quote! {
         pub mod #root_mod_ident {
-            use tmtc_system::{TelemetryDefinition, DynTelemetryDefinition};
+            use tmtc_system::{internal::TelemetryDefinition, DynTelemetryDefinition};
             pub const fn from_id(id: u32) -> &'static dyn DynTelemetryDefinition {
                 match id {
                     #id_getters
