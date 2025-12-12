@@ -7,22 +7,25 @@ use syn::{Item, Meta, Token, punctuated::Punctuated
 };
 
 const TM_VALUE_MACRO_NAME: &str = "tmv";
+const TM_MODULE_MACRO_NAME: &str = "tmm";
 
-fn generate_module_recursive(address: Vec<syn::Ident>, items: &Vec<Item>) -> (TokenStream, TokenStream, TokenStream) {
+fn generate_module_recursive(address: Vec<syn::Ident>, id: &mut u16, items: &Vec<Item>) -> (TokenStream, TokenStream, TokenStream) {
     items.iter()
         .map(|v| {
             match v {
                 syn::Item::Struct(v) => {
+                    // Parse "tmv" attribute
                     let attr_content = v.attrs
                         .iter()
                         .find(|attr| 
                             attr.path()
                             .is_ident(TM_VALUE_MACRO_NAME)
                         )
-                        .expect(&format!("Enum variant {} has no {} attribute", &v.ident, TM_VALUE_MACRO_NAME))
+                        .expect(&format!("Struct {} has no {} attribute", &v.ident, TM_VALUE_MACRO_NAME))
                         .parse_args_with(Punctuated::<Meta, Token![,]>::parse_separated_nonempty)
                         .expect(&format!("Could not parse {} attribute parameters", TM_VALUE_MACRO_NAME));
                     let ty = &v.ident;
+                    // Parse rust address of the struct inside the telemetry module tree
                     let ty_addr: TokenStream = address
                         .iter()
                         .skip(1)
@@ -30,43 +33,49 @@ fn generate_module_recursive(address: Vec<syn::Ident>, items: &Vec<Item>) -> (To
                         .map(|i| i.to_token_stream())
                         .intersperse(quote!(::))
                         .collect();
+                    // Parse type of the TMValue the struct references
                     let tmty = attr_content.get(0)
                         .expect(&format!("{} attribute must contain at least a type and an id parameter", TM_VALUE_MACRO_NAME))
                         .require_path_only()
                         .expect(&format!("first {} attribute parameter must be a type path", TM_VALUE_MACRO_NAME));
-                    let id = attr_content
+                    // Parse Id or substitute calculated one
+                    let tm_id = attr_content
                         .iter()
                         .filter_map(|m| m.require_name_value().ok())
                         .filter(|m| m.path.get_ident().filter(|p| *p == "id").is_some())
                         .map(|m| if let syn::Expr::Lit(value) = &m.value { value } else { panic!("unexpected attribute value type") })
-                        .next().expect("no id specified");
+                        .map(|m| if let syn::Lit::Int(value) = &m.lit { value } else { panic!("unexpected attribute value type") })
+                        .next().map(|lit| lit.base10_parse().unwrap()).unwrap_or(*id);
+                    *id += 1;
+                    // calculate string address based on module tree
                     let str_base_addr: String = address
                         .iter()
                         .map(|i| i.to_string())
                         .intersperse(String::from("."))
                         .collect();
+                    // Parse address
                     let address = format!("{}.{}", str_base_addr, attr_content
                         .iter()
                         .filter_map(|m| m.require_name_value().ok())
                         .filter(|m| m.path.get_ident().filter(|p| *p == "address").is_some())
                         .map(|m| if let syn::Expr::Lit(value) = &m.value { value } else { panic!("unexpected attribute value type") })
                         .map(|m| if let syn::Lit::Str(str) = &m.lit { str } else { panic!("address should be a string") })
-                        .next().map(|str| str.value()).unwrap_or_else(|| ty.to_string().to_snake_case()));
+                        .next().map(|str| str.value()).unwrap_or(ty.to_string().to_snake_case()));
                     (
                         quote!{
                             pub struct #ty;
                             impl const DynTelemetryDefinition for #ty {
-                                fn id(&self) -> u32 { <Self as TelemetryDefinition>::ID }
+                                fn id(&self) -> u16 { <Self as TelemetryDefinition>::ID }
                                 fn address(&self) -> &str { #address }
                             }
                             impl TelemetryDefinition for #ty {
                                 type TMValueType = #tmty;
-                                const ID: u32 = #id;
+                                const ID: u16 = #tm_id;
                             }
 
                         },
                         quote!{
-                            #id => &#ty_addr,
+                            #tm_id => &#ty_addr,
                         },
                         quote!{
                             #address => &#ty_addr,
@@ -74,11 +83,29 @@ fn generate_module_recursive(address: Vec<syn::Ident>, items: &Vec<Item>) -> (To
                     )
                 },
                 syn::Item::Mod(v) => {
+                    // Parse "tmm" attribute
+                    let mut module_id = v.attrs
+                        .iter()
+                        .find(|attr| 
+                            attr.path()
+                            .is_ident(TM_MODULE_MACRO_NAME)
+                        )
+                        .map(|v| v.parse_args_with(Punctuated::<Meta, Token![,]>::parse_separated_nonempty)
+                            .expect(&format!("Could not parse {} attribute parameters", TM_MODULE_MACRO_NAME))
+                            .iter()
+                            .filter_map(|m| m.require_name_value().ok())
+                            .filter(|m| m.path.get_ident().filter(|p| *p == "id").is_some())
+                            .map(|m| if let syn::Expr::Lit(value) = &m.value { value } else { panic!("unexpected attribute value type") })
+                            .map(|m| if let syn::Lit::Int(value) = &m.lit { value } else { panic!("unexpected attribute value type") })
+                            .next().map(|lit| lit.base10_parse().unwrap())
+                        ).flatten();
+                    let module_id_ref: &mut u16 = module_id.as_mut().unwrap_or(id);
+
                     let module_name = v.ident.clone();
                     let mut address = address.clone();
                     address.push(module_name.clone());
                     let (module_content, id_getters, address_getters)
-                        = generate_module_recursive(address, &v.content.as_ref().expect("module sould not be empty").1);
+                        = generate_module_recursive(address, module_id_ref, &v.content.as_ref().expect("module sould not be empty").1);
                     (
                         quote! { 
                             pub mod #module_name {
@@ -95,7 +122,7 @@ fn generate_module_recursive(address: Vec<syn::Ident>, items: &Vec<Item>) -> (To
         }).map(|v| (v.0.to_token_stream(), v.1.to_token_stream(), v.2.to_token_stream())).collect()
 }
 
-pub fn impl_macro(ast: syn::Item) -> TokenStream {
+pub fn impl_macro(ast: syn::Item, mut start_id: u16) -> TokenStream {
     let syn::Item::Mod(telem_defnition) = ast else {
         panic!("telemetry defintion is not a module");
     };
@@ -106,12 +133,12 @@ pub fn impl_macro(ast: syn::Item) -> TokenStream {
     };
 
     let (module_content, id_getters, address_getters)
-        = generate_module_recursive(vec![root_mod_ident.clone()], &root_mod_content.1);
+        = generate_module_recursive(vec![root_mod_ident.clone()], &mut start_id, &root_mod_content.1);
 
     quote! {
         pub mod #root_mod_ident {
             use tmtc_system::{internal::TelemetryDefinition, DynTelemetryDefinition};
-            pub const fn from_id(id: u32) -> &'static dyn DynTelemetryDefinition {
+            pub const fn from_id(id: u16) -> &'static dyn DynTelemetryDefinition {
                 match id {
                     #id_getters
                     _ => panic!("id does not exist")

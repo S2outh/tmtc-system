@@ -14,14 +14,15 @@ pub struct TestVector {
 }
 
 
-#[telemetry_definition]
+#[telemetry_definition(id = 0)]
 mod telemetry {
-    #[tmv(u32, id = 12, address = "first_value")]
+    #[tmv(u32, address = "first_value")]
     struct FirstTMValue;
-    #[tmv(crate::TestValue, id = 1)]
+    #[tmv(crate::TestValue, id = 5)]
     struct SecondTMValue;
+    #[tmm(id = 100)]
     mod some_other_mod {
-        #[tmv(crate::TestVector, id = 3)]
+        #[tmv(crate::TestVector)]
         struct ThirdTMValue;
     }
 }
@@ -66,9 +67,9 @@ fn beacon_insertion_id() {
     let second_value = TestValue { val: 3 };
     let third_value = TestVector { x: 3, y: 3.3, z: TestValue { val: 1 }};
 
-    id_beacon.insert(telemetry::from_id(12), &first_value).unwrap();
-    id_beacon.insert(telemetry::from_id(1), &second_value).unwrap();
-    id_beacon.insert(telemetry::from_id(3), &third_value).unwrap();
+    id_beacon.insert(telemetry::from_id(0), &first_value).unwrap();
+    id_beacon.insert(telemetry::from_id(5), &second_value).unwrap();
+    id_beacon.insert(telemetry::from_id(100), &third_value).unwrap();
 
     beacon.insert(&telemetry::FirstTMValue, &first_value).unwrap();
     beacon.insert(&telemetry::SecondTMValue, &second_value).unwrap();

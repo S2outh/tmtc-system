@@ -2,6 +2,8 @@
 mod beacon_macro;
 mod tm_definition_macro_attribute;
 mod tm_value_macro_derive;
+use std::panic;
+
 use proc_macro::TokenStream;
 use syn::{Meta, Token, punctuated::Punctuated};
 
@@ -23,9 +25,12 @@ pub fn beacon(input: TokenStream) -> TokenStream {
 
 
 #[proc_macro_attribute]
-pub fn telemetry_definition(_attr: TokenStream, item: TokenStream) -> TokenStream {
+pub fn telemetry_definition(attr: TokenStream, item: TokenStream) -> TokenStream {
     let ast = syn::parse(item).unwrap();
+    let syn::Expr::Lit(id_expr) = syn::parse_macro_input!(attr as syn::MetaNameValue).value else { panic!("wrong macro attributes") };
+    let syn::Lit::Int(id_lit) = id_expr.lit else { panic!("wrong macro attributes") };
+    let id = id_lit.base10_parse::<u16>().expect("macro input should be an u16");
 
     // Build the telemetry definition recursive module
-    tm_definition_macro_attribute::impl_macro(ast).into()
+    tm_definition_macro_attribute::impl_macro(ast, id).into()
 }
