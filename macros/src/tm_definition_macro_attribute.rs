@@ -84,7 +84,7 @@ fn generate_module_recursive(address: Vec<syn::Ident>, id: &mut u16, items: &Vec
                 },
                 syn::Item::Mod(v) => {
                     // Parse "tmm" attribute
-                    let mut module_id = v.attrs
+                    if let Some(module_id) = v.attrs
                         .iter()
                         .find(|attr| 
                             attr.path()
@@ -98,18 +98,23 @@ fn generate_module_recursive(address: Vec<syn::Ident>, id: &mut u16, items: &Vec
                             .map(|m| if let syn::Expr::Lit(value) = &m.value { value } else { panic!("unexpected attribute value type") })
                             .map(|m| if let syn::Lit::Int(value) = &m.lit { value } else { panic!("unexpected attribute value type") })
                             .next().map(|lit| lit.base10_parse().unwrap())
-                        ).flatten();
-                    let module_id_ref: &mut u16 = module_id.as_mut().unwrap_or(id);
+                        ).flatten() {
+                        *id = module_id;
+                    }
+                    let start_id = *id;
 
                     let module_name = v.ident.clone();
                     let mut address = address.clone();
                     address.push(module_name.clone());
                     let (module_content, id_getters, address_getters)
-                        = generate_module_recursive(address, module_id_ref, &v.content.as_ref().expect("module sould not be empty").1);
+                        = generate_module_recursive(address, id, &v.content.as_ref().expect("module sould not be empty").1);
                     (
                         quote! { 
                             pub mod #module_name {
                                 use super::*;
+                                pub fn id_range() -> (u16, u16) {
+                                    (#start_id, #id)
+                                }
                                 #module_content
                             }
                         },
@@ -122,7 +127,7 @@ fn generate_module_recursive(address: Vec<syn::Ident>, id: &mut u16, items: &Vec
         }).map(|v| (v.0.to_token_stream(), v.1.to_token_stream(), v.2.to_token_stream())).collect()
 }
 
-pub fn impl_macro(ast: syn::Item, mut start_id: u16) -> TokenStream {
+pub fn impl_macro(ast: syn::Item, mut id: u16) -> TokenStream {
     let syn::Item::Mod(telem_defnition) = ast else {
         panic!("telemetry defintion is not a module");
     };
@@ -131,9 +136,11 @@ pub fn impl_macro(ast: syn::Item, mut start_id: u16) -> TokenStream {
     let Some(root_mod_content) = telem_defnition.content else {
         panic!("module is empty");
     };
+    let start_id = id;
+    let id_ref = &mut id;
 
     let (module_content, id_getters, address_getters)
-        = generate_module_recursive(vec![root_mod_ident.clone()], &mut start_id, &root_mod_content.1);
+        = generate_module_recursive(vec![root_mod_ident.clone()], id_ref, &root_mod_content.1);
 
     quote! {
         pub mod #root_mod_ident {
@@ -150,6 +157,9 @@ pub fn impl_macro(ast: syn::Item, mut start_id: u16) -> TokenStream {
                     #address_getters
                     _ => panic!("address does not exist")
                 }
+            }
+            pub fn id_range() -> (u16, u16) {
+                (#start_id, #id_ref)
             }
             #module_content
         }
