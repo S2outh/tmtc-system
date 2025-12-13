@@ -38,14 +38,8 @@ fn generate_module_recursive(address: Vec<syn::Ident>, id: &mut u16, items: &Vec
                         .expect(&format!("{} attribute must contain at least a type and an id parameter", TM_VALUE_MACRO_NAME))
                         .require_path_only()
                         .expect(&format!("first {} attribute parameter must be a type path", TM_VALUE_MACRO_NAME));
-                    // Parse Id or substitute calculated one
-                    let tm_id = attr_content
-                        .iter()
-                        .filter_map(|m| m.require_name_value().ok())
-                        .filter(|m| m.path.get_ident().filter(|p| *p == "id").is_some())
-                        .map(|m| if let syn::Expr::Lit(value) = &m.value { value } else { panic!("unexpected attribute value type") })
-                        .map(|m| if let syn::Lit::Int(value) = &m.lit { value } else { panic!("unexpected attribute value type") })
-                        .next().map(|lit| lit.base10_parse().unwrap()).unwrap_or(*id);
+                    // Increment id
+                    let tm_id = *id;
                     *id += 1;
                     // calculate string address based on module tree
                     let str_base_addr: String = address
@@ -99,6 +93,9 @@ fn generate_module_recursive(address: Vec<syn::Ident>, id: &mut u16, items: &Vec
                             .map(|m| if let syn::Lit::Int(value) = &m.lit { value } else { panic!("unexpected attribute value type") })
                             .next().map(|lit| lit.base10_parse().unwrap())
                         ).flatten() {
+                        if *id > module_id {
+                            panic!("like schedules, ids should only move in one direction");
+                        }
                         *id = module_id;
                     }
                     let start_id = *id;

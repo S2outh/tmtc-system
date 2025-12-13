@@ -27,7 +27,11 @@ pub fn beacon(input: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn telemetry_definition(attr: TokenStream, item: TokenStream) -> TokenStream {
     let ast = syn::parse(item).unwrap();
-    let syn::Expr::Lit(id_expr) = syn::parse_macro_input!(attr as syn::MetaNameValue).value else { panic!("wrong macro attributes") };
+    let name_value_pair = syn::parse_macro_input!(attr as syn::MetaNameValue);
+    if name_value_pair.path.get_ident().expect("invalid attribute") != "id" {
+        panic!("telemetry definition should only contain id attr");
+    }
+    let syn::Expr::Lit(id_expr) = name_value_pair.value else { panic!("wrong macro attributes") };
     let syn::Lit::Int(id_lit) = id_expr.lit else { panic!("wrong macro attributes") };
     let id = id_lit.base10_parse::<u16>().expect("macro input should be an u16");
 

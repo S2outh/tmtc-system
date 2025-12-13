@@ -18,7 +18,7 @@ pub struct TestVector {
 mod telemetry {
     #[tmv(u32, address = "first_value")]
     struct FirstTMValue;
-    #[tmv(crate::TestValue, id = 5)]
+    #[tmv(crate::TestValue)]
     struct SecondTMValue;
     #[tmm(id = 100)]
     mod some_other_mod {
@@ -68,7 +68,7 @@ fn beacon_insertion_id() {
     let third_value = TestVector { x: 3, y: 3.3, z: TestValue { val: 1 }};
 
     id_beacon.insert(telemetry::from_id(0), &first_value).unwrap();
-    id_beacon.insert(telemetry::from_id(5), &second_value).unwrap();
+    id_beacon.insert(telemetry::from_id(1), &second_value).unwrap();
     id_beacon.insert(telemetry::from_id(100), &third_value).unwrap();
 
     beacon.insert(&telemetry::FirstTMValue, &first_value).unwrap();
