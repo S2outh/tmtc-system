@@ -3,8 +3,7 @@ use std::iter::once;
 use heck::ToSnakeCase;
 use proc_macro2::TokenStream;
 use quote::{ToTokens, quote};
-use syn::{LitInt, Meta, Path, Token, punctuated::Punctuated
-};
+use syn::{LitInt, Meta, Path, Token, punctuated::Punctuated};
 
 pub fn impl_macro(args: Punctuated::<Meta, Token![,]>) -> TokenStream {
     let mut args_iter = args.iter();
@@ -65,9 +64,8 @@ pub fn impl_macro(args: Punctuated::<Meta, Token![,]>) -> TokenStream {
     let tm_values_count = tm_definitions.len() + 1;
     
     quote! {
-        mod #beacon_module_name {
+        pub mod #beacon_module_name {
             use tmtc_system::{internal::TelemetryDefinition, *};
-            use crate::#telemetry_definition_root_path;
             pub struct #beacon_name {
                 storage: [u8; Self::BYTE_SIZE],
             }

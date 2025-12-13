@@ -27,7 +27,7 @@ mod telemetry {
     }
 }
 
-beacon!(TestBeacon, telemetry, header(0, 1, 2, 3), values(FirstTMValue, SecondTMValue, some_other_mod::ThirdTMValue));
+beacon!(TestBeacon, crate::telemetry, header(0, 1, 2, 3), values(FirstTMValue, SecondTMValue, some_other_mod::ThirdTMValue));
 
 use test_beacon::TestBeacon;
 
