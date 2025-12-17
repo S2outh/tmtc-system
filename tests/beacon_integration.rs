@@ -27,15 +27,15 @@ mod telemetry {
     }
 }
 
-beacon!(TestBeacon, crate::telemetry, header(0, 1, 2, 3), values(FirstTMValue, SecondTMValue, some_other_mod::ThirdTMValue));
+beacon!(TestBeacon, crate::telemetry, id = 0, values(FirstTMValue, SecondTMValue, some_other_mod::ThirdTMValue));
 
 use test_beacon::TestBeacon;
 
 #[test]
 fn beacon_creation() {
-    let beacon = TestBeacon::new();
+    let mut beacon = TestBeacon::new();
 
-    let sizes = [4, 4, (4), (2 + 4 + 4)];
+    let sizes = [3, 4, (4), (2 + 4 + 4)];
     assert_eq!(beacon.bytes().len(), sizes.iter().sum());
 }
 
@@ -46,16 +46,16 @@ fn beacon_insertion() {
     let first_value = 1234u32;
     let second_value = TestValue { val: 3 };
     let third_value = TestVector { x: 3, y: 3.3, z: TestValue { val: 1 }};
-    beacon.insert(&telemetry::FirstTMValue, &first_value).unwrap();
-    beacon.insert(&telemetry::SecondTMValue, &second_value).unwrap();
-    beacon.insert(&telemetry::some_other_mod::ThirdTMValue, &third_value).unwrap();
+    beacon.first_tm_value = first_value;
+    beacon.second_tm_value = second_value;
+    beacon.third_tm_value = third_value;
     
-    assert_eq!(&beacon.bytes()[0..4], [0, 1, 2, 3]);
-    assert_eq!(&beacon.bytes()[4..8], first_value.to_le_bytes());
-    assert_eq!(&beacon.bytes()[8..12], second_value.val.to_le_bytes());
-    assert_eq!(&beacon.bytes()[12..14], third_value.x.to_le_bytes());
-    assert_eq!(&beacon.bytes()[14..18], third_value.y.to_le_bytes());
-    assert_eq!(&beacon.bytes()[18..22], third_value.z.val.to_le_bytes());
+    assert_eq!(&beacon.bytes()[0..3], [0, 0, 0]);
+    assert_eq!(&beacon.bytes()[3..7], first_value.to_le_bytes());
+    assert_eq!(&beacon.bytes()[7..11], second_value.val.to_le_bytes());
+    assert_eq!(&beacon.bytes()[11..13], third_value.x.to_le_bytes());
+    assert_eq!(&beacon.bytes()[13..17], third_value.y.to_le_bytes());
+    assert_eq!(&beacon.bytes()[17..21], third_value.z.val.to_le_bytes());
 }
 
 #[test]
@@ -67,13 +67,13 @@ fn beacon_insertion_id() {
     let second_value = TestValue { val: 3 };
     let third_value = TestVector { x: 3, y: 3.3, z: TestValue { val: 1 }};
 
-    id_beacon.insert(telemetry::from_id(0), &first_value).unwrap();
-    id_beacon.insert(telemetry::from_id(1), &second_value).unwrap();
-    id_beacon.insert(telemetry::from_id(100), &third_value).unwrap();
+    id_beacon.insert_slice(telemetry::from_id(0), &first_value.to_bytes()).unwrap();
+    id_beacon.insert_slice(telemetry::from_id(1), &second_value.to_bytes()).unwrap();
+    id_beacon.insert_slice(telemetry::from_id(100), &third_value.to_bytes()).unwrap();
 
-    beacon.insert(&telemetry::FirstTMValue, &first_value).unwrap();
-    beacon.insert(&telemetry::SecondTMValue, &second_value).unwrap();
-    beacon.insert(&telemetry::some_other_mod::ThirdTMValue, &third_value).unwrap();
+    beacon.first_tm_value = first_value;
+    beacon.second_tm_value = second_value;
+    beacon.third_tm_value = third_value;
 
     assert_eq!(id_beacon.bytes(), beacon.bytes());
 }
@@ -87,13 +87,13 @@ fn beacon_insertion_address() {
     let second_value = TestValue { val: 3 };
     let third_value = TestVector { x: 3, y: 3.3, z: TestValue { val: 1 }};
 
-    address_beacon.insert(telemetry::from_address("telemetry.first_value"), &first_value).unwrap();
-    address_beacon.insert(telemetry::from_address("telemetry.second_tm_value"), &second_value).unwrap();
-    address_beacon.insert(telemetry::from_address("telemetry.some_other_mod.third_tm_value"), &third_value).unwrap();
+    address_beacon.insert_slice(telemetry::from_address("telemetry.first_value"), &first_value.to_bytes()).unwrap();
+    address_beacon.insert_slice(telemetry::from_address("telemetry.second_tm_value"), &second_value.to_bytes()).unwrap();
+    address_beacon.insert_slice(telemetry::from_address("telemetry.some_other_mod.third_tm_value"), &third_value.to_bytes()).unwrap();
 
-    beacon.insert(&telemetry::FirstTMValue, &first_value).unwrap();
-    beacon.insert(&telemetry::SecondTMValue, &second_value).unwrap();
-    beacon.insert(&telemetry::some_other_mod::ThirdTMValue, &third_value).unwrap();
+    beacon.first_tm_value = first_value;
+    beacon.second_tm_value = second_value;
+    beacon.third_tm_value = third_value;
 
     assert_eq!(address_beacon.bytes(), beacon.bytes());
 }

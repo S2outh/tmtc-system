@@ -1,9 +1,7 @@
-use std::iter::once;
-
 use heck::ToSnakeCase;
 use proc_macro2::TokenStream;
 use quote::{ToTokens, quote};
-use syn::{LitInt, Meta, Path, Token, punctuated::Punctuated};
+use syn::{Meta, Path, Token, punctuated::Punctuated};
 
 pub fn impl_macro(args: Punctuated::<Meta, Token![,]>) -> TokenStream {
     let mut args_iter = args.iter();
@@ -15,116 +13,129 @@ pub fn impl_macro(args: Punctuated::<Meta, Token![,]>) -> TokenStream {
     
     let beacon_name = path_args_iter.get(0).expect("args should include beacon name");
     let beacon_module_name: TokenStream = beacon_name.to_token_stream().to_string().to_snake_case().parse().unwrap();
-    let telemetry_definition_root_path = path_args_iter.get(1).expect("args should include tm definition path");
+    let root_path = path_args_iter.get(1).expect("args should include tm definition path");
 
-    let list_args_iter: Vec<_> = args_iter
-        .by_ref()
-        .take(2)
-        .map(|m| if let Meta::List(list) = m { list } else { panic!("last two args should be valid lists") })
-        .collect();
+    let Meta::NameValue(id_nv) = args_iter.next().expect("args should contain id") else { panic!("third arg should be id"); };
+    if id_nv.path.get_ident().expect("third arg should be id") != "id" { panic!("args should contain id"); };
+    let id = &id_nv.value;
 
-    let header_arg = list_args_iter.get(0).expect("args should contain header list");
-    let tm_definitions_arg = list_args_iter.get(1).expect("args should contain tm definitions list ");
-
-    let header: Vec<_> = header_arg
-        .parse_args_with(Punctuated::<LitInt, Token![,]>::parse_separated_nonempty)
-        .expect("could not parse header list").into_iter().collect();
-    let header_len = header.len();
+    let Meta::List(tm_definitions_arg) = args_iter.next().expect("4th arg should contain tm definitions list ") else { panic!("args should contain tm definitions list"); };
 
     let tm_definitions: Vec<_> = tm_definitions_arg
         .parse_args_with(Punctuated::<Path, Token![,]>::parse_separated_nonempty)
-        .expect("could not parse header list").into_iter().collect();
+        .expect("could not parse header list").into_iter()
+        .collect();
 
-    let tm_sizes = 
-        once(quote!{ #header_len })
-        .chain(
-        tm_definitions
+    let fields: Vec<_> = tm_definitions
         .iter()
-        .map(|p| quote!{
-            #telemetry_definition_root_path::#p::BYTE_SIZE
-        }));
-    let bounds = tm_definitions
+        .map(|p| (
+                p.segments.last().to_token_stream().to_string().to_snake_case().parse::<TokenStream>().unwrap(),
+                quote!{ <#root_path::#p as TelemetryDefinition>}
+                ))
+        .collect();
+
+    let types: Vec<_> = fields.iter().map(|(_, path)| quote!{ #path::TMValueType} ).collect();
+
+    let field_defs: Vec<_> = fields
         .iter()
-        .enumerate()
-        .map(|(i, p)| (i+1, p))
-        .map(|(i, p)| quote!{
-            #telemetry_definition_root_path::#p::ID => (Self::get_pos(#i), Self::SIZES[#i]),
+        .map(|(name, path)| quote!{
+            pub #name: #path::TMValueType
+        }).collect();
+
+    let field_defaults: Vec<_> = fields
+        .iter()
+        .map(|(name, path)| quote!{
+            #name: #path::TMValueType::default()
+        }).collect();
+
+    let field_set_defaults: Vec<_> = fields
+        .iter()
+        .map(|(name, path)| quote!{
+            self.#name = #path::TMValueType::default();
+        }).collect();
+
+    let type_parsers = fields
+        .iter()
+        .map(|(name, _)| {
+            quote! {
+                pos += self.#name.read(&bytes[pos..]);
+            }
         });
-    let insertions = tm_definitions
+    let byte_parsers = fields
         .iter()
-        .enumerate()
-        .map(|(i, p)| (i+1, p))
-        .map(|(i, p)| quote!{
-            #telemetry_definition_root_path::#p::ID => {
-                let mut bytes = [0u8; Self::SIZES[#i]];
-                value.write(&mut bytes);
-                self.insert_slice(telemetry_definition, &bytes)?;
-            },
+        .map(|(name, _)| {
+            quote! {
+                pos += self.#name.write(&mut self.storage[pos..]);
+            }
         });
-    let tm_values_count = tm_definitions.len() + 1;
-    
+    let type_setters = fields
+        .iter()
+        .map(|(name, path)| {
+            quote! {
+               #path::ID => self.#name.read(bytes),
+            }
+        });
+    let type_getters = fields
+        .iter()
+        .map(|(name, path)| {
+            quote! {
+               #path::ID => self.#name.write(&mut self.storage[..]),
+            }
+        });
+    let header_size: usize = 3;
+
     quote! {
         pub mod #beacon_module_name {
             use tmtc_system::{internal::TelemetryDefinition, *};
+            const BEACON_ID: u8 = #id;
             pub struct #beacon_name {
                 storage: [u8; Self::BYTE_SIZE],
+                #(#field_defs),*
             }
             impl #beacon_name {
-                const SIZES: [usize; #tm_values_count] = [#(#tm_sizes),*];
-                const BYTE_SIZE: usize = Self::get_pos(Self::SIZES.len());
-                const fn get_pos(index: usize) -> usize {
-                    let mut len = 0;
-                    let mut i = 0;
-                    while i < index {
-                        len += Self::SIZES[i];
-                        i += 1;
-                    }
-                    len
-                }
+                const BYTE_SIZE: usize = #header_size + #(<#types as TMValue>::BYTE_SIZE)+*;
 
                 pub fn new() -> Self {
-                    let mut storage = [0u8; Self::BYTE_SIZE];
-                    storage[..#header_len].copy_from_slice(&[#(#header),*]);
                     Self {
-                        storage,
+                        storage: [0u8; Self::BYTE_SIZE],
+                        #(#field_defaults),*
                     }
-                }
-                
-                pub fn from_bytes(bytes: &[u8]) -> Result<Self, <&[u8] as TryInto<[u8; Self::BYTE_SIZE]>>::Error> {
-                    Ok(Self {
-                        storage: bytes.try_into()?
-                    })
                 }
             }
             impl DynBeacon for #beacon_name {
-                fn bytes(&self) -> &[u8] {
-                    &self.storage
-                }
-                fn flush(&mut self) {
-                    self.storage.fill(0);
-                    self.storage[..#header_len].copy_from_slice(&[#(#header),*]);
-                }
-                fn get_bounds(&self, telemetry_definition: &dyn DynTelemetryDefinition) -> Result<(usize, usize), BoundsError> {
-                    Ok(match telemetry_definition.id() {
-                        #(#bounds)*
-                        _ => return Err(BoundsError)
-                    })
-                }
-                fn insert_slice(&mut self, telemetry_definition: &dyn DynTelemetryDefinition, data: &[u8]) -> InsrResult {
-                    let (pos, size) = self.get_bounds(telemetry_definition)?;
-                    assert_eq!(data.len(), size, "Length of bytestream does not match length of expected type");
-                    self.storage[pos..(pos + size)].copy_from_slice(&data);
+                fn from_bytes(&mut self, bytes: &[u8]) -> Result<(), ParseError> {
+                    if bytes.get(0).ok_or(ParseError::TooShort)? != &BEACON_ID {
+                        return Err(ParseError::WrongId);
+                    }
+                    // check CRC
+                    let mut pos = #header_size;
+                    #(#type_parsers)*
                     Ok(())
                 }
-                fn insert(&mut self, telemetry_definition: &dyn DynTelemetryDefinition, value: &dyn DynTMValue) -> InsrResult {
-                    Ok(match telemetry_definition.id() {
-                        #(#insertions)*
-                        _ => return Err(BoundsError)
-                    })
+                fn bytes(&mut self) -> &[u8] {
+                    self.storage[0] = BEACON_ID;
+                    // set CRC
+                    let mut pos = #header_size;
+                    #(#byte_parsers)*
+                    &self.storage[..pos]
                 }
-                fn get_slice<'a>(&'a self, telemetry_definition: &dyn DynTelemetryDefinition) -> ExtrResult<'a> {
-                    let (pos, size) = self.get_bounds(telemetry_definition)?;
-                    Ok(&self.storage[pos..(pos + size)])
+
+                fn insert_slice(&mut self, telemetry_definition: &dyn DynTelemetryDefinition, bytes: &[u8]) -> Result<(), BoundsError> {
+                    match telemetry_definition.id() {
+                        #(#type_setters)*
+                        _ => return Err(BoundsError),
+                    };
+                    Ok(())
+                }
+                fn get_slice<'a>(&'a mut self, telemetry_definition: &dyn DynTelemetryDefinition) -> Result<&'a [u8], BoundsError> {
+                    let length = match telemetry_definition.id() {
+                        #(#type_getters)*
+                        _ => return Err(BoundsError),
+                    };
+                    Ok(&self.storage[..length])
+                }
+                fn flush(&mut self) {
+                    #(#field_set_defaults)*
                 }
             }
         }

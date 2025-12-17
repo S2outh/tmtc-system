@@ -3,7 +3,6 @@
 pub trait DynTMValue {
     fn read(&mut self, bytes: &[u8]) -> usize;
     fn write(&self, mem: &mut [u8]) -> usize;
-    fn type_name(&self) -> &str;
 }
 
 pub trait TMValue: DynTMValue {
@@ -22,7 +21,7 @@ pub trait TMValue: DynTMValue {
 
 // # Primitives
 macro_rules! primitive_value {
-    ($type:ident, $name:literal) => {
+    ($type:ident) => {
         impl DynTMValue for $type {
             fn read(&mut self, bytes: &[u8]) -> usize {
                 *self = Self::from_le_bytes(bytes[..Self::BYTE_SIZE].try_into().expect("wrong memory provided"));
@@ -33,9 +32,6 @@ macro_rules! primitive_value {
                 mem[..Self::BYTE_SIZE].copy_from_slice(&bytes);
                 Self::BYTE_SIZE
             }
-            fn type_name(&self) -> &str {
-                $name
-            }
         }
         impl TMValue for $type {
             const BYTE_SIZE: usize = size_of::<Self>();
@@ -43,20 +39,20 @@ macro_rules! primitive_value {
     };
 }
 
-primitive_value!(u8, "uint8");
-primitive_value!(u16, "uint16");
-primitive_value!(u32, "uint32");
-primitive_value!(u64, "uint64");
-primitive_value!(u128, "uint128");
+primitive_value!(u8);
+primitive_value!(u16);
+primitive_value!(u32);
+primitive_value!(u64);
+primitive_value!(u128);
 
-primitive_value!(i8, "int8");
-primitive_value!(i16, "int16");
-primitive_value!(i32, "int32");
-primitive_value!(i64, "int64");
-primitive_value!(i128, "int128");
+primitive_value!(i8);
+primitive_value!(i16);
+primitive_value!(i32);
+primitive_value!(i64);
+primitive_value!(i128);
 
-primitive_value!(f32, "float32");
-primitive_value!(f64, "float64");
+primitive_value!(f32);
+primitive_value!(f64);
 
 // # Arrays
 impl<const N: usize, T: TMValue> DynTMValue for [T; N] {
@@ -73,9 +69,6 @@ impl<const N: usize, T: TMValue> DynTMValue for [T; N] {
             pos += self[i].write(&mut mem[pos..])
         }
         pos
-    }
-    fn type_name(&self) -> &str {
-        todo!()
     }
 }
 impl<const N: usize, T: TMValue> TMValue for [T; N] {

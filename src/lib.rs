@@ -30,14 +30,18 @@ pub mod internal {
 #[derive(Debug)]
 pub struct BoundsError;
 
-pub type InsrResult = Result<(), BoundsError>;
-pub type ExtrResult<'a> = Result<&'a [u8], BoundsError>;
+#[derive(Debug)]
+pub enum ParseError {
+    WrongId,
+    TooShort,
+    BadLayout,
+    ValueParseError,
+}
 
 pub trait DynBeacon {
-    fn get_bounds(&self, telemetry_definition: &dyn DynTelemetryDefinition) -> Result<(usize, usize), BoundsError>;
-    fn insert_slice(&mut self, telemetry_definition: &dyn DynTelemetryDefinition, data: &[u8]) -> InsrResult;
-    fn insert(&mut self, telemetry_definition: &dyn DynTelemetryDefinition, value: &dyn DynTMValue) -> InsrResult;
-    fn get_slice<'a>(&'a self, telemetry_definition: &dyn DynTelemetryDefinition) -> ExtrResult<'a>;
-    fn bytes(&self) -> &[u8];
+    fn insert_slice(&mut self, telemetry_definition: &dyn DynTelemetryDefinition, bytes: &[u8]) -> Result<(), BoundsError>;
+    fn get_slice<'a>(&'a mut self, telemetry_definition: &dyn DynTelemetryDefinition) -> Result<&'a [u8], BoundsError>;
+    fn from_bytes(&mut self, bytes: &[u8]) -> Result<(), ParseError>;
+    fn bytes(&mut self) -> &[u8];
     fn flush(&mut self);
 }

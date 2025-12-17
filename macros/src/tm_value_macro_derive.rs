@@ -31,9 +31,6 @@ fn impl_struct(type_name: syn::Ident, tm_value_struct: syn::DataStruct) -> Token
                 #(#struct_byte_parsers)*
                 pos
             }
-            fn type_name(&self) -> &str {
-                todo!()
-            }
         }
         impl TMValue for #type_name {
             const BYTE_SIZE: usize = #(<#struct_types as TMValue>::BYTE_SIZE)+*;
