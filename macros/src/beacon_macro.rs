@@ -58,28 +58,28 @@ pub fn impl_macro(args: Punctuated::<Meta, Token![,]>) -> TokenStream {
         .iter()
         .map(|(name, _)| {
             quote! {
-                pos += self.#name.read(&bytes[pos..]);
+                pos += self.#name.read(&bytes[pos..]).map_err(|_| ParseError::OutOfMemory)?;
             }
         });
     let byte_parsers = fields
         .iter()
         .map(|(name, _)| {
             quote! {
-                pos += self.#name.write(&mut self.storage[pos..]);
+                pos += self.#name.write(&mut self.storage[pos..]).unwrap();
             }
         });
     let type_setters = fields
         .iter()
         .map(|(name, path)| {
             quote! {
-               #path::ID => self.#name.read(bytes),
+               #path::ID => self.#name.read(bytes).map_err(|_| BeaconOperationError::OutOfMemory)?,
             }
         });
     let type_getters = fields
         .iter()
         .map(|(name, path)| {
             quote! {
-               #path::ID => self.#name.write(&mut self.storage[..]),
+               #path::ID => self.#name.write(&mut self.storage[..]).unwrap(),
             }
         });
     let header_size: usize = 3;
@@ -104,7 +104,7 @@ pub fn impl_macro(args: Punctuated::<Meta, Token![,]>) -> TokenStream {
             }
             impl DynBeacon for #beacon_name {
                 fn from_bytes(&mut self, bytes: &[u8]) -> Result<(), ParseError> {
-                    if bytes.get(0).ok_or(ParseError::TooShort)? != &BEACON_ID {
+                    if bytes.get(0).ok_or(ParseError::OutOfMemory)? != &BEACON_ID {
                         return Err(ParseError::WrongId);
                     }
                     // check CRC
@@ -120,17 +120,17 @@ pub fn impl_macro(args: Punctuated::<Meta, Token![,]>) -> TokenStream {
                     &self.storage[..pos]
                 }
 
-                fn insert_slice(&mut self, telemetry_definition: &dyn DynTelemetryDefinition, bytes: &[u8]) -> Result<(), BoundsError> {
+                fn insert_slice(&mut self, telemetry_definition: &dyn DynTelemetryDefinition, bytes: &[u8]) -> Result<(), BeaconOperationError> {
                     match telemetry_definition.id() {
                         #(#type_setters)*
-                        _ => return Err(BoundsError),
+                        _ => return Err(BeaconOperationError::DefNotInBeacon),
                     };
                     Ok(())
                 }
-                fn get_slice<'a>(&'a mut self, telemetry_definition: &dyn DynTelemetryDefinition) -> Result<&'a [u8], BoundsError> {
+                fn get_slice<'a>(&'a mut self, telemetry_definition: &dyn DynTelemetryDefinition) -> Result<&'a [u8], BeaconOperationError> {
                     let length = match telemetry_definition.id() {
                         #(#type_getters)*
-                        _ => return Err(BoundsError),
+                        _ => return Err(BeaconOperationError::DefNotInBeacon),
                     };
                     Ok(&self.storage[..length])
                 }

@@ -1,20 +1,23 @@
 
+#[derive(Debug)]
+pub struct OutOfMemory;
+
 // # Trait definitions
 pub trait DynTMValue {
-    fn read(&mut self, bytes: &[u8]) -> usize;
-    fn write(&self, mem: &mut [u8]) -> usize;
+    fn read(&mut self, bytes: &[u8]) -> Result<usize, OutOfMemory>;
+    fn write(&self, mem: &mut [u8]) -> Result<usize, OutOfMemory>;
 }
 
 pub trait TMValue: DynTMValue {
     const BYTE_SIZE: usize;
     fn from_bytes(bytes: [u8; Self::BYTE_SIZE]) -> Self where Self: Default {
         let mut value: Self = Self::default();
-        Self::read(&mut value, &bytes);
+        Self::read(&mut value, &bytes).unwrap();
         value
     }
     fn to_bytes(&self) -> [u8; Self::BYTE_SIZE] {
         let mut bytes = [0u8; Self::BYTE_SIZE];
-        self.write(&mut bytes);
+        self.write(&mut bytes).unwrap();
         bytes
     }
 }
@@ -23,14 +26,17 @@ pub trait TMValue: DynTMValue {
 macro_rules! primitive_value {
     ($type:ident) => {
         impl DynTMValue for $type {
-            fn read(&mut self, bytes: &[u8]) -> usize {
-                *self = Self::from_le_bytes(bytes[..Self::BYTE_SIZE].try_into().expect("wrong memory provided"));
-                Self::BYTE_SIZE
+            fn read(&mut self, bytes: &[u8]) -> Result<usize, OutOfMemory> {
+                if bytes.len() < Self::BYTE_SIZE {
+                    return Err(OutOfMemory);
+                }
+                *self = Self::from_le_bytes(bytes[..Self::BYTE_SIZE].try_into().unwrap());
+                Ok(Self::BYTE_SIZE)
             }
-            fn write(&self, mem: &mut [u8]) -> usize {
+            fn write(&self, mem: &mut [u8]) -> Result<usize, OutOfMemory> {
                 let bytes = self.to_le_bytes();
                 mem[..Self::BYTE_SIZE].copy_from_slice(&bytes);
-                Self::BYTE_SIZE
+                Ok(Self::BYTE_SIZE)
             }
         }
         impl TMValue for $type {
@@ -56,19 +62,19 @@ primitive_value!(f64);
 
 // # Arrays
 impl<const N: usize, T: TMValue> DynTMValue for [T; N] {
-    fn read(&mut self, bytes: &[u8]) -> usize {
+    fn read(&mut self, bytes: &[u8]) -> Result<usize, OutOfMemory> {
         let mut pos = 0;
         for i in 0..N {
-            pos += self[i].read(&bytes[pos..])
+            pos += self[i].read(&bytes[pos..])?;
         }
-        pos
+        Ok(pos)
     }
-    fn write(&self, mem: &mut [u8]) -> usize {
+    fn write(&self, mem: &mut [u8]) -> Result<usize, OutOfMemory> {
         let mut pos = 0;
         for i in 0..N {
-            pos += self[i].write(&mut mem[pos..])
+            pos += self[i].write(&mut mem[pos..])?;
         }
-        pos
+        Ok(pos)
     }
 }
 impl<const N: usize, T: TMValue> TMValue for [T; N] {

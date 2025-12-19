@@ -1,4 +1,5 @@
 #![feature(const_trait_impl)]
+#![feature(const_cmp)]
 use tmtc_system::*;
 
 #[derive(TMValue, Default, Clone, Copy)]
@@ -46,10 +47,11 @@ fn beacon_insertion() {
     let first_value = 1234u32;
     let second_value = TestValue { val: 3 };
     let third_value = TestVector { x: 3, y: 3.3, z: TestValue { val: 1 }};
+
     beacon.first_tm_value = first_value;
     beacon.second_tm_value = second_value;
     beacon.third_tm_value = third_value;
-    
+
     assert_eq!(&beacon.bytes()[0..3], [0, 0, 0]);
     assert_eq!(&beacon.bytes()[3..7], first_value.to_le_bytes());
     assert_eq!(&beacon.bytes()[7..11], second_value.val.to_le_bytes());
@@ -67,9 +69,9 @@ fn beacon_insertion_id() {
     let second_value = TestValue { val: 3 };
     let third_value = TestVector { x: 3, y: 3.3, z: TestValue { val: 1 }};
 
-    id_beacon.insert_slice(telemetry::from_id(0), &first_value.to_bytes()).unwrap();
-    id_beacon.insert_slice(telemetry::from_id(1), &second_value.to_bytes()).unwrap();
-    id_beacon.insert_slice(telemetry::from_id(100), &third_value.to_bytes()).unwrap();
+    id_beacon.insert_slice(telemetry::from_id(0).unwrap(), &first_value.to_bytes()).unwrap();
+    id_beacon.insert_slice(telemetry::from_id(1).unwrap(), &second_value.to_bytes()).unwrap();
+    id_beacon.insert_slice(telemetry::from_id(100).unwrap(), &third_value.to_bytes()).unwrap();
 
     beacon.first_tm_value = first_value;
     beacon.second_tm_value = second_value;
@@ -87,9 +89,9 @@ fn beacon_insertion_address() {
     let second_value = TestValue { val: 3 };
     let third_value = TestVector { x: 3, y: 3.3, z: TestValue { val: 1 }};
 
-    address_beacon.insert_slice(telemetry::from_address("telemetry.first_value"), &first_value.to_bytes()).unwrap();
-    address_beacon.insert_slice(telemetry::from_address("telemetry.second_tm_value"), &second_value.to_bytes()).unwrap();
-    address_beacon.insert_slice(telemetry::from_address("telemetry.some_other_mod.third_tm_value"), &third_value.to_bytes()).unwrap();
+    address_beacon.insert_slice(telemetry::from_address("telemetry.first_value").unwrap(), &first_value.to_bytes()).unwrap();
+    address_beacon.insert_slice(telemetry::from_address("telemetry.second_tm_value").unwrap(), &second_value.to_bytes()).unwrap();
+    address_beacon.insert_slice(telemetry::from_address("telemetry.some_other_mod.third_tm_value").unwrap(), &third_value.to_bytes()).unwrap();
 
     beacon.first_tm_value = first_value;
     beacon.second_tm_value = second_value;

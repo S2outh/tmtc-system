@@ -4,14 +4,21 @@
 #![feature(const_trait_impl)]
 
 mod telemetry_value;
+mod telemetry_container;
 
 // macro reexports
 pub use macros::TMValue;
 pub use macros::beacon;
 pub use macros::telemetry_definition;
 
+// value reexports
 pub use telemetry_value::TMValue;
 pub use telemetry_value::DynTMValue;
+pub use telemetry_value::OutOfMemory;
+
+// container reexports
+pub use telemetry_container::TelemetryContainer;
+pub use telemetry_container::UnsupportedValue;
 
 pub const trait DynTelemetryDefinition {
     fn id(&self) -> u16;
@@ -28,20 +35,25 @@ pub mod internal {
 }
 
 #[derive(Debug)]
-pub struct BoundsError;
+pub struct NotFoundError;
+
+#[derive(Debug)]
+pub enum BeaconOperationError {
+    DefNotInBeacon,
+    OutOfMemory
+}
 
 #[derive(Debug)]
 pub enum ParseError {
     WrongId,
-    TooShort,
-    BadLayout,
-    ValueParseError,
+    OutOfMemory,
 }
 
 pub trait DynBeacon {
-    fn insert_slice(&mut self, telemetry_definition: &dyn DynTelemetryDefinition, bytes: &[u8]) -> Result<(), BoundsError>;
-    fn get_slice<'a>(&'a mut self, telemetry_definition: &dyn DynTelemetryDefinition) -> Result<&'a [u8], BoundsError>;
+    fn insert_slice(&mut self, telemetry_definition: &dyn DynTelemetryDefinition, bytes: &[u8]) -> Result<(), BeaconOperationError>;
+    fn get_slice<'a>(&'a mut self, telemetry_definition: &dyn DynTelemetryDefinition) -> Result<&'a [u8], BeaconOperationError>;
     fn from_bytes(&mut self, bytes: &[u8]) -> Result<(), ParseError>;
     fn bytes(&mut self) -> &[u8];
     fn flush(&mut self);
 }
+

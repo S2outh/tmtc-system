@@ -1,4 +1,5 @@
-use std::iter::once;
+use std::iter::{once, zip};
+use std::array::from_fn;
 
 use heck::ToSnakeCase;
 use proc_macro2::TokenStream;
@@ -9,7 +10,11 @@ use syn::{Item, Meta, Token, punctuated::Punctuated
 const TM_VALUE_MACRO_NAME: &str = "tmv";
 const TM_MODULE_MACRO_NAME: &str = "tmm";
 
-fn generate_module_recursive(address: Vec<syn::Ident>, id: &mut u16, items: &Vec<Item>) -> (TokenStream, TokenStream, TokenStream) {
+fn generate_module_recursive(
+        address: Vec<syn::Ident>,
+        id: &mut u16,
+        items: &Vec<Item>
+    ) -> [TokenStream; 4] {
     items.iter()
         .map(|v| {
             match v {
@@ -55,7 +60,7 @@ fn generate_module_recursive(address: Vec<syn::Ident>, id: &mut u16, items: &Vec
                         .map(|m| if let syn::Expr::Lit(value) = &m.value { value } else { panic!("unexpected attribute value type") })
                         .map(|m| if let syn::Lit::Str(str) = &m.lit { str } else { panic!("address should be a string") })
                         .next().map(|str| str.value()).unwrap_or(ty.to_string().to_snake_case()));
-                    (
+                    [
                         quote!{
                             pub struct #ty;
                             impl const DynTelemetryDefinition for #ty {
@@ -69,12 +74,15 @@ fn generate_module_recursive(address: Vec<syn::Ident>, id: &mut u16, items: &Vec
 
                         },
                         quote!{
-                            #tm_id => &#ty_addr,
+                            #tm_id => Ok(&#ty_addr),
                         },
                         quote!{
-                            #address => &#ty_addr,
+                            #address => Ok(&#ty_addr),
                         },
-                    )
+                        quote!{
+                            #ty::BYTE_SIZE,
+                        }
+                    ]
                 },
                 syn::Item::Mod(v) => {
                     // Parse "tmm" attribute
@@ -103,25 +111,44 @@ fn generate_module_recursive(address: Vec<syn::Ident>, id: &mut u16, items: &Vec
                     let module_name = v.ident.clone();
                     let mut address = address.clone();
                     address.push(module_name.clone());
-                    let (module_content, id_getters, address_getters)
+                    let [module_content, id_getters, address_getters, byte_lengths]
                         = generate_module_recursive(address, id, &v.content.as_ref().expect("module sould not be empty").1);
-                    (
-                        quote! { 
+
+                    [
+                        quote! {
                             pub mod #module_name {
                                 use super::*;
-                                pub fn id_range() -> (u16, u16) {
+                                pub const fn id_range() -> (u16, u16) {
                                     (#start_id, #id)
                                 }
+                                pub const MAX_BYTE_SIZE: usize = {
+                                    let SIZES = [#byte_lengths];
+                                    let mut max = 0;
+                                    let mut i = 0;
+                                    while i < SIZES.len() {
+                                        if SIZES[i] > max {
+                                            max = SIZES[i];
+                                        }
+                                        i += 1;
+                                    }
+                                    max
+                                };
                                 #module_content
                             }
                         },
                         id_getters,
                         address_getters,
-                    )
+                        quote!{
+                            #module_name::MAX_BYTE_SIZE,
+                        }
+                    ]
                 },
                 _ => panic!("module should only contain other modules and structs"),
             }
-        }).map(|v| (v.0.to_token_stream(), v.1.to_token_stream(), v.2.to_token_stream())).collect()
+        }).fold(
+            from_fn(|_| TokenStream::new()),
+            |acc, src| zip(acc, src).map(|(mut acc, src)| {acc.extend(src); acc}).collect::<Vec<_>>().try_into().unwrap()
+        )
 }
 
 pub fn impl_macro(ast: syn::Item, mut id: u16) -> TokenStream {
@@ -136,28 +163,39 @@ pub fn impl_macro(ast: syn::Item, mut id: u16) -> TokenStream {
     let start_id = id;
     let id_ref = &mut id;
 
-    let (module_content, id_getters, address_getters)
+    let [module_content, id_getters, address_getters, byte_lengths]
         = generate_module_recursive(vec![root_mod_ident.clone()], id_ref, &root_mod_content.1);
 
     quote! {
         pub mod #root_mod_ident {
-            use tmtc_system::{internal::TelemetryDefinition, DynTelemetryDefinition};
-            pub const fn from_id(id: u16) -> &'static dyn DynTelemetryDefinition {
+            use tmtc_system::{internal::TelemetryDefinition, DynTelemetryDefinition, NotFoundError};
+            pub const fn from_id(id: u16) -> Result<&'static dyn DynTelemetryDefinition, NotFoundError> {
                 match id {
                     #id_getters
-                    _ => panic!("id does not exist")
+                    _ => Err(NotFoundError)
                 }
             }
-
-            pub fn from_address(address: &str) -> &'static dyn DynTelemetryDefinition {
+            pub const fn from_address(address: &str) -> Result<&'static dyn DynTelemetryDefinition, NotFoundError> {
                 match address {
                     #address_getters
-                    _ => panic!("address does not exist")
+                    _ => Err(NotFoundError)
                 }
             }
-            pub fn id_range() -> (u16, u16) {
+            pub const fn id_range() -> (u16, u16) {
                 (#start_id, #id_ref)
             }
+            pub const MAX_BYTE_SIZE: usize = {
+                let SIZES = [#byte_lengths];
+                let mut max = 0;
+                let mut i = 0;
+                while i < SIZES.len() {
+                    if SIZES[i] > max {
+                        max = SIZES[i];
+                    }
+                    i += 1;
+                }
+                max
+            };
             #module_content
         }
     }

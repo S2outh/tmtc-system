@@ -7,7 +7,7 @@ fn impl_struct(type_name: syn::Ident, tm_value_struct: syn::DataStruct) -> Token
         .map(|f| {
             let ident = &f.ident;
             quote! {
-                pos += self.#ident.read(&bytes[pos..]);
+                pos += self.#ident.read(&bytes[pos..])?;
             }
         });
     let struct_byte_parsers = tm_value_struct.fields
@@ -15,21 +15,21 @@ fn impl_struct(type_name: syn::Ident, tm_value_struct: syn::DataStruct) -> Token
         .map(|f| {
             let ident = &f.ident;
             quote! {
-                pos += self.#ident.write(&mut mem[pos..]);
+                pos += self.#ident.write(&mut mem[pos..])?;
             }
         });
     let struct_types = tm_value_struct.fields.iter().map(|f| &f.ty);
     quote! {
         impl DynTMValue for #type_name {
-            fn read(&mut self, bytes: &[u8]) -> usize {
+            fn read(&mut self, bytes: &[u8]) -> Result<usize, OutOfMemory> {
                 let mut pos = 0;
                 #(#struct_type_parsers)*
-                pos
+                Ok(pos)
             }
-            fn write(&self, mem: &mut [u8]) -> usize {
+            fn write(&self, mem: &mut [u8]) -> Result<usize, OutOfMemory> {
                 let mut pos = 0;
                 #(#struct_byte_parsers)*
-                pos
+                Ok(pos)
             }
         }
         impl TMValue for #type_name {
