@@ -103,20 +103,28 @@ pub fn impl_macro(args: Punctuated::<Meta, Token![,]>) -> TokenStream {
                 }
             }
             impl DynBeacon for #beacon_name {
-                fn from_bytes(&mut self, bytes: &[u8]) -> Result<(), ParseError> {
-                    if bytes.get(0).ok_or(ParseError::OutOfMemory)? != &BEACON_ID {
+                fn from_bytes(&mut self, bytes: &[u8], crc_func: &mut dyn FnMut(&[u8]) -> u16) -> Result<(), ParseError> {
+                    if bytes.len() < #header_size {
+                        return Err(ParseError::OutOfMemory);
+                    }
+                    if bytes[0] != BEACON_ID {
                         return Err(ParseError::WrongId);
                     }
-                    // check CRC
+                    let received_crc = u16::from_le_bytes(bytes[1..3].try_into().unwrap());
+                    let calculated_crc = (crc_func)(&bytes[#header_size..]);
+                    if calculated_crc != received_crc {
+                        return Err(ParseError::BadCRC);
+                    }
                     let mut pos = #header_size;
                     #(#type_parsers)*
                     Ok(())
                 }
-                fn bytes(&mut self) -> &[u8] {
+                fn bytes(&mut self, crc_func: &mut dyn FnMut(&[u8]) -> u16) -> &[u8] {
                     self.storage[0] = BEACON_ID;
-                    // set CRC
                     let mut pos = #header_size;
                     #(#byte_parsers)*
+                    let crc = (crc_func)(&self.storage[#header_size..pos]);
+                    self.storage[1..3].copy_from_slice(&crc.to_le_bytes());
                     &self.storage[..pos]
                 }
 
@@ -127,7 +135,7 @@ pub fn impl_macro(args: Punctuated::<Meta, Token![,]>) -> TokenStream {
                     };
                     Ok(())
                 }
-                fn get_slice<'a>(&'a mut self, telemetry_definition: &dyn DynTelemetryDefinition) -> Result<&'a [u8], BeaconOperationError> {
+                fn get_slice<'b>(&'b mut self, telemetry_definition: &dyn DynTelemetryDefinition) -> Result<&'b [u8], BeaconOperationError> {
                     let length = match telemetry_definition.id() {
                         #(#type_getters)*
                         _ => return Err(BeaconOperationError::DefNotInBeacon),

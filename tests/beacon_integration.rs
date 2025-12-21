@@ -32,12 +32,27 @@ beacon!(TestBeacon, crate::telemetry, id = 0, values(FirstTMValue, SecondTMValue
 
 use test_beacon::TestBeacon;
 
+fn crc_ccitt(bytes: &[u8]) -> u16 {
+    let mut crc: u16 = 0xFFFF;
+    for byte in bytes {
+        crc ^= (*byte as u16) << 8;
+        for _ in 0..8 {
+            if (crc & 0x8000) != 0 {
+                crc = (crc << 1) ^ 0x1021;
+            } else {
+                crc <<= 1;
+            }
+        }
+    }
+    crc
+}
+
 #[test]
 fn beacon_creation() {
     let mut beacon = TestBeacon::new();
 
     let sizes = [3, 4, (4), (2 + 4 + 4)];
-    assert_eq!(beacon.bytes().len(), sizes.iter().sum());
+    assert_eq!(beacon.bytes(&mut crc_ccitt).len(), sizes.iter().sum());
 }
 
 #[test]
@@ -52,12 +67,19 @@ fn beacon_insertion() {
     beacon.second_tm_value = second_value;
     beacon.third_tm_value = third_value;
 
-    assert_eq!(&beacon.bytes()[0..3], [0, 0, 0]);
-    assert_eq!(&beacon.bytes()[3..7], first_value.to_le_bytes());
-    assert_eq!(&beacon.bytes()[7..11], second_value.val.to_le_bytes());
-    assert_eq!(&beacon.bytes()[11..13], third_value.x.to_le_bytes());
-    assert_eq!(&beacon.bytes()[13..17], third_value.y.to_le_bytes());
-    assert_eq!(&beacon.bytes()[17..21], third_value.z.val.to_le_bytes());
+    let bytes = beacon.bytes(&mut crc_ccitt);
+    let crc = crc_ccitt(&bytes[3..]);
+    // calculated with
+    // https://www.crccalc.com/?crc=D2, 04, 00, 00, 03, 00, 00, 00, 03, 00, 33, 33, 53, 40, 01, 00, 00, 00&method=CRC-16/CCITT-FALSE&datatype=hex&outtype=hex
+    assert_eq!(crc, 0xF27D);
+
+    assert_eq!(bytes[0], 0);
+    assert_eq!(bytes[1..3], crc.to_le_bytes());
+    assert_eq!(bytes[3..7], first_value.to_le_bytes());
+    assert_eq!(bytes[7..11], second_value.val.to_le_bytes());
+    assert_eq!(bytes[11..13], third_value.x.to_le_bytes());
+    assert_eq!(bytes[13..17], third_value.y.to_le_bytes());
+    assert_eq!(bytes[17..21], third_value.z.val.to_le_bytes());
 }
 
 #[test]
@@ -77,7 +99,7 @@ fn beacon_insertion_id() {
     beacon.second_tm_value = second_value;
     beacon.third_tm_value = third_value;
 
-    assert_eq!(id_beacon.bytes(), beacon.bytes());
+    assert_eq!(id_beacon.bytes(&mut crc_ccitt), beacon.bytes(&mut crc_ccitt));
 }
 
 #[test]
@@ -97,5 +119,5 @@ fn beacon_insertion_address() {
     beacon.second_tm_value = second_value;
     beacon.third_tm_value = third_value;
 
-    assert_eq!(address_beacon.bytes(), beacon.bytes());
+    assert_eq!(address_beacon.bytes(&mut crc_ccitt), beacon.bytes(&mut crc_ccitt));
 }

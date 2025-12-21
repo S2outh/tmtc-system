@@ -46,14 +46,15 @@ pub enum BeaconOperationError {
 #[derive(Debug)]
 pub enum ParseError {
     WrongId,
+    BadCRC,
     OutOfMemory,
 }
 
 pub trait DynBeacon {
     fn insert_slice(&mut self, telemetry_definition: &dyn DynTelemetryDefinition, bytes: &[u8]) -> Result<(), BeaconOperationError>;
-    fn get_slice<'a>(&'a mut self, telemetry_definition: &dyn DynTelemetryDefinition) -> Result<&'a [u8], BeaconOperationError>;
-    fn from_bytes(&mut self, bytes: &[u8]) -> Result<(), ParseError>;
-    fn bytes(&mut self) -> &[u8];
+    fn get_slice<'b>(&'b mut self, telemetry_definition: &dyn DynTelemetryDefinition) -> Result<&'b [u8], BeaconOperationError>;
+    fn from_bytes(&mut self, bytes: &[u8], crc_func: &mut dyn FnMut(&[u8]) -> u16) -> Result<(), ParseError>;
+    fn bytes(&mut self, crc_func: &mut dyn FnMut(&[u8]) -> u16) -> &[u8];
     fn flush(&mut self);
 }
 
