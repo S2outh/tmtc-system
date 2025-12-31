@@ -1,6 +1,7 @@
 #![no_std]
 #![allow(incomplete_features)]
-#![feature(generic_const_exprs)]
+#![feature(generic_const_exprs)] // this is beeing used to provide a TMValue blanket impl, might be
+                                 // unstable
 #![feature(const_trait_impl)]
 
 mod telemetry_value;
@@ -31,6 +32,19 @@ pub mod internal {
         type TMValueType: crate::TMValue;
         const BYTE_SIZE: usize = Self::TMValueType::BYTE_SIZE;
         const ID: u16;
+    }
+
+    #[cfg_attr(feature = "serde", derive(serde::Serialize))]
+    #[cfg(feature = "serde")]
+    pub struct NatsTelemetry<T: serde::Serialize> {
+        timestamp: i64,
+        value: T,
+    }
+    #[cfg(feature = "serde")]
+    impl<T: serde::Serialize> NatsTelemetry<T> {
+        pub fn new(timestamp: i64, value: T) -> Self {
+            Self { timestamp, value }
+        }
     }
 }
 

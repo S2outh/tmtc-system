@@ -3,5 +3,9 @@ name = "tmtc-system"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+serde = ["dep:serde", "macros/serde"]
+
 [dependencies]
 macros = { package = "tmtc-system-macros", path = "./macros/" }
+serde = { version = "1.0.228", no-default-features = true, features = ["derive"], optional = true }

@@ -30,28 +30,28 @@ pub fn impl_macro(args: Punctuated::<Meta, Token![,]>) -> TokenStream {
         .iter()
         .map(|p| (
                 p.segments.last().to_token_stream().to_string().to_snake_case().parse::<TokenStream>().unwrap(),
-                quote!{ <#root_path::#p as TelemetryDefinition>}
+                quote!{ #root_path::#p }
                 ))
         .collect();
 
-    let types: Vec<_> = fields.iter().map(|(_, path)| quote!{ #path::TMValueType} ).collect();
+    let types: Vec<_> = fields.iter().map(|(_, path)| quote!{ <#path as TelemetryDefinition>::TMValueType} ).collect();
 
     let field_defs: Vec<_> = fields
         .iter()
         .map(|(name, path)| quote!{
-            pub #name: #path::TMValueType
+            pub #name: <#path as TelemetryDefinition>::TMValueType
         }).collect();
 
     let field_defaults: Vec<_> = fields
         .iter()
         .map(|(name, path)| quote!{
-            #name: #path::TMValueType::default()
+            #name: <#path as TelemetryDefinition>::TMValueType::default()
         }).collect();
 
     let field_set_defaults: Vec<_> = fields
         .iter()
         .map(|(name, path)| quote!{
-            self.#name = #path::TMValueType::default();
+            self.#name = <#path as TelemetryDefinition>::TMValueType::default();
         }).collect();
 
     let type_parsers = fields
@@ -72,21 +72,40 @@ pub fn impl_macro(args: Punctuated::<Meta, Token![,]>) -> TokenStream {
         .iter()
         .map(|(name, path)| {
             quote! {
-               #path::ID => self.#name.read(bytes).map_err(|_| BeaconOperationError::OutOfMemory)?,
+               <#path as TelemetryDefinition>::ID => self.#name.read(bytes).map_err(|_| BeaconOperationError::OutOfMemory)?,
             }
         });
     let type_getters = fields
         .iter()
         .map(|(name, path)| {
             quote! {
-               #path::ID => self.#name.write(&mut self.storage[..]).unwrap(),
+               <#path as TelemetryDefinition>::ID => self.#name.write(&mut self.storage[..]).unwrap(),
             }
         });
+    let serializers = fields
+        .iter()
+        .map(|(name, path)| {
+            quote! {
+                let nats_value = NatsTelemetry::new(timestamp, self.#name);
+                let bytes = serde_cbor::to_vec(&nats_value).unwrap();
+                serialized_values.push((#path.address(), bytes));
+            }
+        });
+    let serializer_func = if cfg!(feature = "serde") {
+       quote! {
+           pub fn serialize(&self) -> alloc::vec::Vec<(&'static str, alloc::vec::Vec<u8>)> {
+               let mut serialized_values = alloc::vec::Vec::new();
+               let timestamp = self.timestamp;
+               #(#serializers)*
+               serialized_values 
+           }
+       } 
+    } else {quote! {}};
     let header_size: usize = 3;
 
     quote! {
         pub mod #beacon_module_name {
-            use tmtc_system::{internal::TelemetryDefinition, *};
+            use tmtc_system::{internal::*, *};
             const BEACON_ID: u8 = #id;
             pub struct #beacon_name {
                 storage: [u8; Self::BYTE_SIZE],
@@ -101,6 +120,7 @@ pub fn impl_macro(args: Punctuated::<Meta, Token![,]>) -> TokenStream {
                         #(#field_defaults),*
                     }
                 }
+                #serializer_func
             }
             impl DynBeacon for #beacon_name {
                 fn from_bytes(&mut self, bytes: &[u8], crc_func: &mut dyn FnMut(&[u8]) -> u16) -> Result<(), ParseError> {
