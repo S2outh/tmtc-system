@@ -63,15 +63,14 @@ fn generate_module_recursive(
                     [
                         quote!{
                             pub struct #ty;
-                            impl const DynTelemetryDefinition for #ty {
-                                fn id(&self) -> u16 { <Self as TelemetryDefinition>::ID }
-                                fn address(&self) -> &str { #address }
-                            }
-                            impl TelemetryDefinition for #ty {
+                            impl InternalTelemetryDefinition for #ty {
                                 type TMValueType = #tmty;
                                 const ID: u16 = #tm_id;
                             }
-
+                            impl const TelemetryDefinition for #ty {
+                                fn id(&self) -> u16 { Self::ID }
+                                fn address(&self) -> &str { #address }
+                            }
                         },
                         quote!{
                             #tm_id => Ok(&#ty_addr),
@@ -168,14 +167,14 @@ pub fn impl_macro(ast: syn::Item, mut id: u16) -> TokenStream {
 
     quote! {
         pub mod #root_mod_ident {
-            use tmtc_system::{internal::TelemetryDefinition, DynTelemetryDefinition, NotFoundError};
-            pub const fn from_id(id: u16) -> Result<&'static dyn DynTelemetryDefinition, NotFoundError> {
+            use tmtc_system::{TelemetryDefinition, internal::InternalTelemetryDefinition, NotFoundError};
+            pub const fn from_id(id: u16) -> Result<&'static dyn TelemetryDefinition, NotFoundError> {
                 match id {
                     #id_getters
                     _ => Err(NotFoundError)
                 }
             }
-            pub const fn from_address(address: &str) -> Result<&'static dyn DynTelemetryDefinition, NotFoundError> {
+            pub const fn from_address(address: &str) -> Result<&'static dyn TelemetryDefinition, NotFoundError> {
                 match address {
                     #address_getters
                     _ => Err(NotFoundError)

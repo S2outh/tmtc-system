@@ -1,3 +1,5 @@
+use std::iter::once;
+
 use heck::ToSnakeCase;
 use proc_macro2::TokenStream;
 use quote::{ToTokens, quote};
@@ -26,7 +28,7 @@ pub fn impl_macro(args: Punctuated::<Meta, Token![,]>) -> TokenStream {
         .expect("could not parse header list").into_iter()
         .collect();
 
-    let fields: Vec<_> = tm_definitions
+    let serializable_fields: Vec<_> = tm_definitions
         .iter()
         .map(|p| (
                 p.segments.last().to_token_stream().to_string().to_snake_case().parse::<TokenStream>().unwrap(),
@@ -34,24 +36,30 @@ pub fn impl_macro(args: Punctuated::<Meta, Token![,]>) -> TokenStream {
                 ))
         .collect();
 
-    let types: Vec<_> = fields.iter().map(|(_, path)| quote!{ <#path as TelemetryDefinition>::TMValueType} ).collect();
+    let timestamp_field = (quote!{timestamp}, quote!{#root_path::Timestamp});
+    let fields: Vec<_> = once(&timestamp_field)
+        .chain(serializable_fields.iter())
+        .map(|(name, path)| (name, quote!{ <#path as InternalTelemetryDefinition> }))
+        .collect();
+
+    let types: Vec<_> = fields.iter().map(|(_, path)| quote!{ #path::TMValueType} ).collect();
 
     let field_defs: Vec<_> = fields
         .iter()
         .map(|(name, path)| quote!{
-            pub #name: <#path as TelemetryDefinition>::TMValueType
+            pub #name: #path::TMValueType
         }).collect();
 
     let field_defaults: Vec<_> = fields
         .iter()
         .map(|(name, path)| quote!{
-            #name: <#path as TelemetryDefinition>::TMValueType::default()
+            #name: #path::TMValueType::default()
         }).collect();
 
     let field_set_defaults: Vec<_> = fields
         .iter()
         .map(|(name, path)| quote!{
-            self.#name = <#path as TelemetryDefinition>::TMValueType::default();
+            self.#name = #path::TMValueType::default();
         }).collect();
 
     let type_parsers = fields
@@ -72,17 +80,17 @@ pub fn impl_macro(args: Punctuated::<Meta, Token![,]>) -> TokenStream {
         .iter()
         .map(|(name, path)| {
             quote! {
-               <#path as TelemetryDefinition>::ID => self.#name.read(bytes).map_err(|_| BeaconOperationError::OutOfMemory)?,
+               #path::ID => self.#name.read(bytes).map_err(|_| BeaconOperationError::OutOfMemory)?,
             }
         });
     let type_getters = fields
         .iter()
         .map(|(name, path)| {
             quote! {
-               <#path as TelemetryDefinition>::ID => self.#name.write(&mut self.storage[..]).unwrap(),
+               #path::ID => self.#name.write(&mut self.storage[..]).unwrap(),
             }
         });
-    let serializers = fields
+    let serializers = serializable_fields
         .iter()
         .map(|(name, path)| {
             quote! {
@@ -148,14 +156,14 @@ pub fn impl_macro(args: Punctuated::<Meta, Token![,]>) -> TokenStream {
                     &self.storage[..pos]
                 }
 
-                fn insert_slice(&mut self, telemetry_definition: &dyn DynTelemetryDefinition, bytes: &[u8]) -> Result<(), BeaconOperationError> {
+                fn insert_slice(&mut self, telemetry_definition: &dyn TelemetryDefinition, bytes: &[u8]) -> Result<(), BeaconOperationError> {
                     match telemetry_definition.id() {
                         #(#type_setters)*
                         _ => return Err(BeaconOperationError::DefNotInBeacon),
                     };
                     Ok(())
                 }
-                fn get_slice<'b>(&'b mut self, telemetry_definition: &dyn DynTelemetryDefinition) -> Result<&'b [u8], BeaconOperationError> {
+                fn get_slice<'b>(&'b mut self, telemetry_definition: &dyn TelemetryDefinition) -> Result<&'b [u8], BeaconOperationError> {
                     let length = match telemetry_definition.id() {
                         #(#type_getters)*
                         _ => return Err(BeaconOperationError::DefNotInBeacon),

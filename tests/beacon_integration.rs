@@ -17,6 +17,8 @@ pub struct TestVector {
 
 #[telemetry_definition(id = 0)]
 mod telemetry {
+    #[tmv(i64)]
+    struct Timestamp;
     #[tmv(u32, address = "first_value")]
     struct FirstTMValue;
     #[tmv(crate::TestValue)]
@@ -51,7 +53,7 @@ fn crc_ccitt(bytes: &[u8]) -> u16 {
 fn beacon_creation() {
     let mut beacon = TestBeacon::new();
 
-    let sizes = [3, 4, (4), (2 + 4 + 4)];
+    let sizes = [3, 8, 4, (4), (2 + 4 + 4)];
     assert_eq!(beacon.bytes(&mut crc_ccitt).len(), sizes.iter().sum());
 }
 
@@ -70,16 +72,16 @@ fn beacon_insertion() {
     let bytes = beacon.bytes(&mut crc_ccitt);
     let crc = crc_ccitt(&bytes[3..]);
     // calculated with
-    // https://www.crccalc.com/?crc=D2, 04, 00, 00, 03, 00, 00, 00, 03, 00, 33, 33, 53, 40, 01, 00, 00, 00&method=CRC-16/CCITT-FALSE&datatype=hex&outtype=hex
-    assert_eq!(crc, 0xF27D);
+    // https://www.crccalc.com/?crc=00, 00, 00, 00, 00, 00, 00, 00, D2, 04, 00, 00, 03, 00, 00, 00, 03, 00, 33, 33, 53, 40, 01, 00, 00, 00&method=CRC-16/CCITT-FALSE&datatype=hex&outtype=hex
+    assert_eq!(crc, 0x8798);
 
     assert_eq!(bytes[0], 0);
     assert_eq!(bytes[1..3], crc.to_le_bytes());
-    assert_eq!(bytes[3..7], first_value.to_le_bytes());
-    assert_eq!(bytes[7..11], second_value.val.to_le_bytes());
-    assert_eq!(bytes[11..13], third_value.x.to_le_bytes());
-    assert_eq!(bytes[13..17], third_value.y.to_le_bytes());
-    assert_eq!(bytes[17..21], third_value.z.val.to_le_bytes());
+    assert_eq!(bytes[11..15], first_value.to_le_bytes());
+    assert_eq!(bytes[15..19], second_value.val.to_le_bytes());
+    assert_eq!(bytes[19..21], third_value.x.to_le_bytes());
+    assert_eq!(bytes[21..25], third_value.y.to_le_bytes());
+    assert_eq!(bytes[25..29], third_value.z.val.to_le_bytes());
 }
 
 #[test]
@@ -91,8 +93,8 @@ fn beacon_insertion_id() {
     let second_value = TestValue { val: 3 };
     let third_value = TestVector { x: 3, y: 3.3, z: TestValue { val: 1 }};
 
-    id_beacon.insert_slice(telemetry::from_id(0).unwrap(), &first_value.to_bytes()).unwrap();
-    id_beacon.insert_slice(telemetry::from_id(1).unwrap(), &second_value.to_bytes()).unwrap();
+    id_beacon.insert_slice(telemetry::from_id(1).unwrap(), &first_value.to_bytes()).unwrap();
+    id_beacon.insert_slice(telemetry::from_id(2).unwrap(), &second_value.to_bytes()).unwrap();
     id_beacon.insert_slice(telemetry::from_id(100).unwrap(), &third_value.to_bytes()).unwrap();
 
     beacon.first_tm_value = first_value;
