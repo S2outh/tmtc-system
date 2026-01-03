@@ -67,7 +67,7 @@ fn beacon_insertion() {
 
     beacon.first_tm_value = first_value;
     beacon.second_tm_value = second_value;
-    beacon.third_tm_value = third_value;
+    beacon.some_other_mod_third_tm_value = third_value;
 
     let bytes = beacon.bytes(&mut crc_ccitt);
     let crc = crc_ccitt(&bytes[3..]);
@@ -99,7 +99,7 @@ fn beacon_insertion_id() {
 
     beacon.first_tm_value = first_value;
     beacon.second_tm_value = second_value;
-    beacon.third_tm_value = third_value;
+    beacon.some_other_mod_third_tm_value = third_value;
 
     assert_eq!(id_beacon.bytes(&mut crc_ccitt), beacon.bytes(&mut crc_ccitt));
 }
@@ -119,7 +119,7 @@ fn beacon_insertion_address() {
 
     beacon.first_tm_value = first_value;
     beacon.second_tm_value = second_value;
-    beacon.third_tm_value = third_value;
+    beacon.some_other_mod_third_tm_value = third_value;
 
     assert_eq!(address_beacon.bytes(&mut crc_ccitt), beacon.bytes(&mut crc_ccitt));
 }

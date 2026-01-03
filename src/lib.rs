@@ -64,7 +64,7 @@ pub enum ParseError {
     OutOfMemory,
 }
 
-pub trait DynBeacon {
+pub trait Beacon {
     fn insert_slice(&mut self, telemetry_definition: &dyn TelemetryDefinition, bytes: &[u8]) -> Result<(), BeaconOperationError>;
     fn get_slice<'b>(&'b mut self, telemetry_definition: &dyn TelemetryDefinition) -> Result<&'b [u8], BeaconOperationError>;
     fn from_bytes(&mut self, bytes: &[u8], crc_func: &mut dyn FnMut(&[u8]) -> u16) -> Result<(), ParseError>;

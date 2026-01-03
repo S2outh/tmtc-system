@@ -31,7 +31,12 @@ pub fn impl_macro(args: Punctuated::<Meta, Token![,]>) -> TokenStream {
     let serializable_fields: Vec<_> = tm_definitions
         .iter()
         .map(|p| (
-                p.segments.last().to_token_stream().to_string().to_snake_case().parse::<TokenStream>().unwrap(),
+                p.segments
+                    .iter()
+                    .map(|v| v.to_token_stream().to_string().to_snake_case())
+                    .collect::<Vec<String>>()
+                    .join("_")
+                    .parse::<TokenStream>().unwrap(),
                 quote!{ #root_path::#p }
                 ))
         .collect();
@@ -130,7 +135,7 @@ pub fn impl_macro(args: Punctuated::<Meta, Token![,]>) -> TokenStream {
                 }
                 #serializer_func
             }
-            impl DynBeacon for #beacon_name {
+            impl Beacon for #beacon_name {
                 fn from_bytes(&mut self, bytes: &[u8], crc_func: &mut dyn FnMut(&[u8]) -> u16) -> Result<(), ParseError> {
                     if bytes.len() < #header_size {
                         return Err(ParseError::OutOfMemory);

@@ -38,51 +38,86 @@ fn impl_struct(type_name: syn::Ident, tm_value_struct: syn::DataStruct) -> Token
     }
 }
 
-fn impl_enum(_type_name: syn::Ident, _tm_value_enum: syn::DataEnum) -> TokenStream {
-    todo!()
-    // let enum_variant_size_cmp = tm_value_enum.variants
-    //     .iter()
-    //     .map(|v| v.fields
-    //             .iter()
-    //             .map(|f| &f.ty)
-    //             .map(|ty| quote!{ #ty::BYTE_SIZE }))
-    //     .map(|sizes| quote! {
-    //         let variant_size = #(#sizes)+*;
-    //         if variant_size > m {
-    //             m = variant_size;
-    //         }
-    //     });
-    // let enum_variant_parsers = tm_value_enum.variants
-    //     .iter()
-    //     .map(|v| {
-    //         let field_parsers = v.fields
-    //             .iter()
-    //             .map(|f| {
-    //                 let ident = &f.ident;
-    //                 quote! {
-    //                     pos += self.#ident.read(&bytes[pos..]);
-    //                 }
-    //             });
-    //     });
-    // quote! {
-    //     impl DynTMValue for #type_name {
-    //         fn read(&mut self, bytes: &[u8]) -> usize {
-    //             match bytes[0] {
-    //             }
-    //         }
-    //         fn write(&self, mem: &mut [u8]) -> usize {
-    //             match self {
-    //             }
-    //         }
-    //     }
-    //     impl TMValue for #type_name {
-    //         const BYTE_SIZE: usize = {
-    //             let mut m = 0;
-    //             #(#enum_variant_size_cmp)*
-    //             m
-    //         }
-    //     }
-    // }
+fn impl_enum(type_name: syn::Ident, tm_value_enum: syn::DataEnum) -> TokenStream {
+    let enum_variant_size_cmp = tm_value_enum.variants
+        .iter()
+        .map(|v| v.fields
+                .iter()
+                .map(|f| &f.ty)
+                .map(|ty| quote!{ #ty::BYTE_SIZE }))
+        .map(|sizes| quote! {
+            let variant_size = #(#sizes)+*;
+            if variant_size > m {
+                m = variant_size;
+            }
+        });
+    let enum_variant_parsers = tm_value_enum.variants
+        .iter()
+        .enumerate()
+        .map(|(i, v)| {
+            let index = i as u8;
+            let field_idents = v.fields
+                .iter()
+                .map(|v| &v.ident);
+            let field_parsers = field_idents.clone()
+                .map(|ident| {
+                    quote! {
+                        pos += #ident.read(&bytes[pos..])?;
+                    }
+                });
+            quote! {
+                #index => {
+                    #(#field_parsers)*
+                }
+            }
+        });
+    let enum_byte_parsers = tm_value_enum.variants
+        .iter()
+        .enumerate()
+        .map(|(i, v)| {
+            let ident = &v.ident;
+            let index = i as u8;
+            let field_idents = v.fields
+                .iter()
+                .map(|v| &v.ident);
+            let field_parsers = field_idents.clone()
+                .map(|ident| {
+                    quote! {
+                        pos += #ident.write(&mut mem[pos..])?;
+                    }
+                });
+            quote! {
+                Self::#ident(#(#field_idents),*) => {
+                    mem[0] = #index;
+                    #(#field_parsers)*
+                }
+            }
+        });
+    quote! {
+        impl DynTMValue for #type_name {
+            fn read(&mut self, bytes: &[u8]) -> Result<usize, OutOfMemory> {
+                let mut pos = 1;
+                match bytes[0] {
+                    #(#enum_variant_parsers)*
+                }
+                Ok(pos)
+            }
+            fn write(&self, mem: &mut [u8]) -> Result<usize, OutOfMemory> {
+                let mut pos = 1;
+                match self {
+                    #(#enum_byte_parsers)*
+                }
+                Ok(pos)
+            }
+        }
+        impl TMValue for #type_name {
+            const BYTE_SIZE: usize = {
+                let mut m = 0;
+                #(#enum_variant_size_cmp)*
+                m
+            };
+        }
+    }
 }
 
 pub fn impl_macro(ast: syn::DeriveInput) -> TokenStream {

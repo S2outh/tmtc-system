@@ -1,3 +1,5 @@
+use heapless::Vec;
+
 
 #[derive(Debug)]
 pub struct OutOfMemory;
@@ -50,12 +52,14 @@ primitive_value!(u16);
 primitive_value!(u32);
 primitive_value!(u64);
 primitive_value!(u128);
+primitive_value!(usize);
 
 primitive_value!(i8);
 primitive_value!(i16);
 primitive_value!(i32);
 primitive_value!(i64);
 primitive_value!(i128);
+primitive_value!(isize);
 
 primitive_value!(f32);
 primitive_value!(f64);
@@ -78,5 +82,27 @@ impl<const N: usize, T: TMValue> DynTMValue for [T; N] {
     }
 }
 impl<const N: usize, T: TMValue> TMValue for [T; N] {
+    const BYTE_SIZE: usize = N * T::BYTE_SIZE;
+}
+// # Vectors
+impl<const N: usize, T: TMValue + Default> DynTMValue for Vec<T, N> {
+    fn read(&mut self, bytes: &[u8]) -> Result<usize, OutOfMemory> {
+        let mut len = 0;
+        let mut pos = len.read(bytes)?;
+        for i in 0..len {
+            let _ = self.push(T::default());
+            pos += self[i].read(&bytes[pos..])?;
+        }
+        Ok(pos)
+    }
+    fn write(&self, mem: &mut [u8]) -> Result<usize, OutOfMemory> {
+        let mut pos = 0;
+        for i in 0..self.len() {
+            pos += self[i].write(&mut mem[pos..])?;
+        }
+        Ok(pos)
+    }
+}
+impl<const N: usize, T: TMValue + Default> TMValue for Vec<T, N> {
     const BYTE_SIZE: usize = N * T::BYTE_SIZE;
 }

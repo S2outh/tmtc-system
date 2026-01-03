@@ -13,6 +13,15 @@ pub struct TestVector {
     z: TestValue
 }
 
+//#[derive(TMValue, Default, PartialEq, Debug, Clone, Copy)]
+//pub enum TestEnum {
+//    #[default]
+//    EmptyVar,
+//    FirstVar(i16),
+//    SecondVar(f32),
+//    ThirdVar(TestValue)
+//}
+
 #[test]
 fn tm_value_primitives() {
     let first_value = 4433u32;
@@ -47,7 +56,11 @@ fn tm_value_arrays() {
     assert_eq!(first_value, first_value_copy);
 }
 
-#[test]
-fn tm_value_enums() {
-    // TODO
-}
+//#[test]
+//fn tm_value_enums() {
+//    let first_value = TestEnum::ThirdVar(TestValue { val: 42 });
+//    let first_value_bytes: [u8; 1+4] = first_value.to_bytes();
+//    let first_value_copy = TestEnum::from_bytes(first_value_bytes);
+//
+//    assert_eq!(first_value, first_value_copy);
+//}
