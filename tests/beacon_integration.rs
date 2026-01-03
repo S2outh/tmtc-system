@@ -30,7 +30,12 @@ mod telemetry {
     }
 }
 
-beacon!(TestBeacon, crate::telemetry, id = 0, values(FirstTMValue, SecondTMValue, some_other_mod::ThirdTMValue));
+beacon!(TestBeacon,
+    crate::telemetry,
+    crate::telemetry::Timestamp,
+    id = 0,
+    values(FirstTMValue, SecondTMValue, some_other_mod::ThirdTMValue)
+);
 
 use test_beacon::TestBeacon;
 

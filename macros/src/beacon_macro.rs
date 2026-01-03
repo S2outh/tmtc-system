@@ -9,19 +9,20 @@ pub fn impl_macro(args: Punctuated::<Meta, Token![,]>) -> TokenStream {
     let mut args_iter = args.iter();
     let path_args_iter: Vec<_> = args_iter
         .by_ref()
-        .take(2)
-        .map(|m| if let Meta::Path(path) = m { path } else { panic!("first two args should be valid paths") })
+        .take(3)
+        .map(|m| if let Meta::Path(path) = m { path } else { panic!("first 3 args should be valid paths") })
         .collect();
     
     let beacon_name = path_args_iter.get(0).expect("args should include beacon name");
     let beacon_module_name: TokenStream = beacon_name.to_token_stream().to_string().to_snake_case().parse().unwrap();
     let root_path = path_args_iter.get(1).expect("args should include tm definition path");
+    let timestamp_path = path_args_iter.get(2).expect("args should include timestamp path");
 
     let Meta::NameValue(id_nv) = args_iter.next().expect("args should contain id") else { panic!("third arg should be id"); };
     if id_nv.path.get_ident().expect("third arg should be id") != "id" { panic!("args should contain id"); };
     let id = &id_nv.value;
 
-    let Meta::List(tm_definitions_arg) = args_iter.next().expect("4th arg should contain tm definitions list ") else { panic!("args should contain tm definitions list"); };
+    let Meta::List(tm_definitions_arg) = args_iter.next().expect("5th arg should contain tm definitions list ") else { panic!("args should contain tm definitions list"); };
 
     let tm_definitions: Vec<_> = tm_definitions_arg
         .parse_args_with(Punctuated::<Path, Token![,]>::parse_separated_nonempty)
@@ -41,7 +42,7 @@ pub fn impl_macro(args: Punctuated::<Meta, Token![,]>) -> TokenStream {
                 ))
         .collect();
 
-    let timestamp_field = (quote!{timestamp}, quote!{#root_path::Timestamp});
+    let timestamp_field = (quote!{timestamp}, quote!{#timestamp_path});
     let fields: Vec<_> = once(&timestamp_field)
         .chain(serializable_fields.iter())
         .map(|(name, path)| (name, quote!{ <#path as InternalTelemetryDefinition> }))
