@@ -26,7 +26,10 @@
         pkgs.mkShell {
           buildInputs = [
             rust
+
+            pkgs.cargo-expand
           ];
+          RUSTFLAGS="-Zmacro-backtrace";
         };
       }
     );

@@ -1,5 +1,6 @@
 use quote::quote;
 use proc_macro2::TokenStream;
+use syn::Ident;
 
 fn impl_struct(type_name: syn::Ident, tm_value_struct: syn::DataStruct) -> TokenStream {
     let struct_type_parsers = tm_value_struct.fields
@@ -41,14 +42,23 @@ fn impl_struct(type_name: syn::Ident, tm_value_struct: syn::DataStruct) -> Token
 fn impl_enum(type_name: syn::Ident, tm_value_enum: syn::DataEnum) -> TokenStream {
     let enum_variant_size_cmp = tm_value_enum.variants
         .iter()
-        .map(|v| v.fields
-                .iter()
+        .map(|v| {
+            let iter: Box<dyn Iterator<Item = _>> = match &v.fields {
+                syn::Fields::Unit =>
+                    Box::new(std::iter::empty()),
+                syn::Fields::Unnamed(unnamed_fields) =>
+                    Box::new(unnamed_fields.unnamed.iter()),
+                syn::Fields::Named(named_fields) =>
+                    Box::new(named_fields.named.iter()),
+            };
+            let sizes = iter
                 .map(|f| &f.ty)
-                .map(|ty| quote!{ #ty::BYTE_SIZE }))
-        .map(|sizes| quote! {
-            let variant_size = #(#sizes)+*;
-            if variant_size > m {
-                m = variant_size;
+                .map(|ty| quote!{ #ty::BYTE_SIZE });
+            quote! {
+                let variant_size = 1usize #(+ #sizes)*;
+                if variant_size > m {
+                    m = variant_size;
+                }
             }
         });
     let enum_variant_parsers = tm_value_enum.variants
@@ -56,18 +66,57 @@ fn impl_enum(type_name: syn::Ident, tm_value_enum: syn::DataEnum) -> TokenStream
         .enumerate()
         .map(|(i, v)| {
             let index = i as u8;
-            let field_idents = v.fields
-                .iter()
-                .map(|v| &v.ident);
-            let field_parsers = field_idents.clone()
-                .map(|ident| {
+            let ident = &v.ident;
+            match &v.fields {
+                syn::Fields::Unit => {
                     quote! {
-                        pos += #ident.read(&bytes[pos..])?;
+                        #index => {
+                            *self = Self::#ident;
+                        }
                     }
-                });
-            quote! {
-                #index => {
-                    #(#field_parsers)*
+                },
+                syn::Fields::Unnamed(unnamed_fields) => {
+                    let fields = unnamed_fields.unnamed
+                        .iter()
+                        .enumerate()
+                        .map(|(i, v)| (&v.ty, Ident::new(&format!("v{}", i), proc_macro2::Span::call_site())));
+                    let field_idents = fields.clone().map(|(_, ident)| ident);
+                    let field_parsers = fields
+                        .map(|(ty, ident)| {
+                            quote! {
+                                let mut #ident: #ty = core::mem::zeroed();
+                                pos += #ident.read(&bytes[pos..])?;
+                            }
+                        });
+                    quote! {
+                        #index => {
+                            unsafe {
+                              #(#field_parsers)*
+                              *self = Self::#ident(#(#field_idents),*);
+                            }
+                        }
+                    }
+                },
+                syn::Fields::Named(named_fields) => {
+                    let fields = named_fields.named
+                        .iter()
+                        .map(|v| (&v.ty, v.ident.clone().unwrap()));
+                    let field_idents = fields.clone().map(|(_, ident)| ident);
+                    let field_parsers = fields
+                        .map(|(ty, ident)| {
+                            quote! {
+                                let mut #ident: #ty = core::mem::zeroed();
+                                pos += #ident.read(&bytes[pos..])?;
+                            }
+                        });
+                    quote! {
+                        #index => {
+                            unsafe {
+                              #(#field_parsers)*
+                              *self = Self::#ident(#(#field_idents),*);
+                            }
+                        }
+                    }
                 }
             }
         });
@@ -77,20 +126,48 @@ fn impl_enum(type_name: syn::Ident, tm_value_enum: syn::DataEnum) -> TokenStream
         .map(|(i, v)| {
             let ident = &v.ident;
             let index = i as u8;
-            let field_idents = v.fields
-                .iter()
-                .map(|v| &v.ident);
-            let field_parsers = field_idents.clone()
-                .map(|ident| {
+            match &v.fields {
+                syn::Fields::Unit => {
                     quote! {
-                        pos += #ident.write(&mut mem[pos..])?;
+                        Self::#ident => {
+                            mem[0] = #index;
+                        }
                     }
-                });
-            quote! {
-                Self::#ident(#(#field_idents),*) => {
-                    mem[0] = #index;
-                    #(#field_parsers)*
-                }
+                },
+                syn::Fields::Unnamed(unnamed_fields) => {
+                    let field_idents = (0..unnamed_fields.unnamed.len())
+                        .into_iter()
+                        .map(|i| Ident::new(&format!("v{}", i), proc_macro2::Span::call_site()));
+                    let field_parsers = field_idents.clone()
+                        .map(|ident| {
+                            quote! {
+                                pos += #ident.write(&mut mem[pos..])?;
+                            }
+                        });
+                    quote! {
+                        Self::#ident(#(#field_idents),*) => {
+                            mem[0] = #index;
+                            #(#field_parsers)*
+                        }
+                    }
+                },
+                syn::Fields::Named(named_fields) => {
+                    let field_idents = named_fields.named
+                        .iter()
+                        .map(|v| v.ident.clone().unwrap());
+                    let field_parsers = field_idents.clone()
+                        .map(|ident| {
+                            quote! {
+                                pos += #ident.write(&mut mem[pos..])?;
+                            }
+                        });
+                    quote! {
+                        Self::#ident(#(#field_idents),*) => {
+                            mem[0] = #index;
+                            #(#field_parsers)*
+                        }
+                    }
+                },
             }
         });
     quote! {
@@ -99,6 +176,7 @@ fn impl_enum(type_name: syn::Ident, tm_value_enum: syn::DataEnum) -> TokenStream
                 let mut pos = 1;
                 match bytes[0] {
                     #(#enum_variant_parsers)*
+                    _ => return Err(OutOfMemory)
                 }
                 Ok(pos)
             }

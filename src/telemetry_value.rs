@@ -12,10 +12,12 @@ pub trait DynTMValue {
 
 pub trait TMValue: DynTMValue {
     const BYTE_SIZE: usize;
-    fn from_bytes(bytes: [u8; Self::BYTE_SIZE]) -> Self where Self: Default {
-        let mut value: Self = Self::default();
-        Self::read(&mut value, &bytes).unwrap();
-        value
+    fn from_bytes(bytes: [u8; Self::BYTE_SIZE]) -> Self where Self: Sized {
+        unsafe {
+            let mut value: Self = core::mem::zeroed();
+            Self::read(&mut value, &bytes).unwrap();
+            value
+        }
     }
     fn to_bytes(&self) -> [u8; Self::BYTE_SIZE] {
         let mut bytes = [0u8; Self::BYTE_SIZE];
@@ -85,12 +87,14 @@ impl<const N: usize, T: TMValue> TMValue for [T; N] {
     const BYTE_SIZE: usize = N * T::BYTE_SIZE;
 }
 // # Vectors
-impl<const N: usize, T: TMValue + Default> DynTMValue for Vec<T, N> {
+impl<const N: usize, T: TMValue> DynTMValue for Vec<T, N> {
     fn read(&mut self, bytes: &[u8]) -> Result<usize, OutOfMemory> {
         let mut len = 0;
         let mut pos = len.read(bytes)?;
         for i in 0..len {
-            let _ = self.push(T::default());
+            unsafe {
+                let _ = self.push(core::mem::zeroed());
+            }
             pos += self[i].read(&bytes[pos..])?;
         }
         Ok(pos)
@@ -103,6 +107,6 @@ impl<const N: usize, T: TMValue + Default> DynTMValue for Vec<T, N> {
         Ok(pos)
     }
 }
-impl<const N: usize, T: TMValue + Default> TMValue for Vec<T, N> {
+impl<const N: usize, T: TMValue> TMValue for Vec<T, N> {
     const BYTE_SIZE: usize = N * T::BYTE_SIZE;
 }
