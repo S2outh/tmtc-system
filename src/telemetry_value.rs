@@ -14,11 +14,11 @@ pub trait DynTMValue {
 
 pub trait TMValue: DynTMValue {
     const BYTE_SIZE: usize;
-    fn from_bytes(bytes: &[u8]) -> Self where Self: Sized {
+    fn from_bytes(bytes: &[u8]) -> Result<Self, TMValueError> where Self: Sized {
         unsafe {
             let mut value: Self = core::mem::zeroed();
-            Self::read(&mut value, bytes).unwrap();
-            value
+            Self::read(&mut value, bytes)?;
+            Ok(value)
         }
     }
     fn to_bytes(&self) -> [u8; Self::BYTE_SIZE] {
