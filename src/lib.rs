@@ -15,7 +15,7 @@ pub use macros::telemetry_definition;
 // value reexports
 pub use telemetry_value::TMValue;
 pub use telemetry_value::DynTMValue;
-pub use telemetry_value::OutOfMemory;
+pub use telemetry_value::TMValueError;
 
 // container reexports
 pub use telemetry_container::TelemetryContainer;

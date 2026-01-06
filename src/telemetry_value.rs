@@ -2,12 +2,15 @@ use heapless::Vec;
 
 
 #[derive(Debug)]
-pub struct OutOfMemory;
+pub enum TMValueError{
+    OutOfMemory,
+    BadEnumVariant
+}
 
 // # Trait definitions
 pub trait DynTMValue {
-    fn read(&mut self, bytes: &[u8]) -> Result<usize, OutOfMemory>;
-    fn write(&self, mem: &mut [u8]) -> Result<usize, OutOfMemory>;
+    fn read(&mut self, bytes: &[u8]) -> Result<usize, TMValueError>;
+    fn write(&self, mem: &mut [u8]) -> Result<usize, TMValueError>;
 }
 
 pub trait TMValue: DynTMValue {
@@ -30,14 +33,17 @@ pub trait TMValue: DynTMValue {
 macro_rules! primitive_value {
     ($type:ident) => {
         impl DynTMValue for $type {
-            fn read(&mut self, bytes: &[u8]) -> Result<usize, OutOfMemory> {
+            fn read(&mut self, bytes: &[u8]) -> Result<usize, TMValueError> {
                 if bytes.len() < Self::BYTE_SIZE {
-                    return Err(OutOfMemory);
+                    return Err(TMValueError::OutOfMemory);
                 }
                 *self = Self::from_le_bytes(bytes[..Self::BYTE_SIZE].try_into().unwrap());
                 Ok(Self::BYTE_SIZE)
             }
-            fn write(&self, mem: &mut [u8]) -> Result<usize, OutOfMemory> {
+            fn write(&self, mem: &mut [u8]) -> Result<usize, TMValueError> {
+                if mem.len() < Self::BYTE_SIZE {
+                    return Err(TMValueError::OutOfMemory)
+                }
                 let bytes = self.to_le_bytes();
                 mem[..Self::BYTE_SIZE].copy_from_slice(&bytes);
                 Ok(Self::BYTE_SIZE)
@@ -68,14 +74,14 @@ primitive_value!(f64);
 
 // # Arrays
 impl<const N: usize, T: TMValue> DynTMValue for [T; N] {
-    fn read(&mut self, bytes: &[u8]) -> Result<usize, OutOfMemory> {
+    fn read(&mut self, bytes: &[u8]) -> Result<usize, TMValueError> {
         let mut pos = 0;
         for i in 0..N {
             pos += self[i].read(&bytes[pos..])?;
         }
         Ok(pos)
     }
-    fn write(&self, mem: &mut [u8]) -> Result<usize, OutOfMemory> {
+    fn write(&self, mem: &mut [u8]) -> Result<usize, TMValueError> {
         let mut pos = 0;
         for i in 0..N {
             pos += self[i].write(&mut mem[pos..])?;
@@ -88,7 +94,7 @@ impl<const N: usize, T: TMValue> TMValue for [T; N] {
 }
 // # Vectors
 impl<const N: usize, T: TMValue> DynTMValue for Vec<T, N> {
-    fn read(&mut self, bytes: &[u8]) -> Result<usize, OutOfMemory> {
+    fn read(&mut self, bytes: &[u8]) -> Result<usize, TMValueError> {
         let mut len = 0;
         let mut pos = len.read(bytes)?;
         for i in 0..len {
@@ -99,7 +105,7 @@ impl<const N: usize, T: TMValue> DynTMValue for Vec<T, N> {
         }
         Ok(pos)
     }
-    fn write(&self, mem: &mut [u8]) -> Result<usize, OutOfMemory> {
+    fn write(&self, mem: &mut [u8]) -> Result<usize, TMValueError> {
         let mut pos = 0;
         for i in 0..self.len() {
             pos += self[i].write(&mut mem[pos..])?;

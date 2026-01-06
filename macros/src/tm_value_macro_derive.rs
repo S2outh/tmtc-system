@@ -22,12 +22,12 @@ fn impl_struct(type_name: syn::Ident, tm_value_struct: syn::DataStruct) -> Token
     let struct_types = tm_value_struct.fields.iter().map(|f| &f.ty);
     quote! {
         impl DynTMValue for #type_name {
-            fn read(&mut self, bytes: &[u8]) -> Result<usize, OutOfMemory> {
+            fn read(&mut self, bytes: &[u8]) -> Result<usize, TMValueError> {
                 let mut pos = 0;
                 #(#struct_type_parsers)*
                 Ok(pos)
             }
-            fn write(&self, mem: &mut [u8]) -> Result<usize, OutOfMemory> {
+            fn write(&self, mem: &mut [u8]) -> Result<usize, TMValueError> {
                 let mut pos = 0;
                 #(#struct_byte_parsers)*
                 Ok(pos)
@@ -172,15 +172,15 @@ fn impl_enum(type_name: syn::Ident, tm_value_enum: syn::DataEnum) -> TokenStream
         });
     quote! {
         impl DynTMValue for #type_name {
-            fn read(&mut self, bytes: &[u8]) -> Result<usize, OutOfMemory> {
+            fn read(&mut self, bytes: &[u8]) -> Result<usize, TMValueError> {
                 let mut pos = 1;
                 match bytes[0] {
                     #(#enum_variant_parsers)*
-                    _ => return Err(OutOfMemory)
+                    _ => return Err(TMValueError::BadEnumVariant)
                 }
                 Ok(pos)
             }
-            fn write(&self, mem: &mut [u8]) -> Result<usize, OutOfMemory> {
+            fn write(&self, mem: &mut [u8]) -> Result<usize, TMValueError> {
                 let mut pos = 1;
                 match self {
                     #(#enum_byte_parsers)*
