@@ -1,6 +1,5 @@
 use heapless::Vec;
 
-
 #[derive(Debug)]
 pub enum TMValueError{
     OutOfMemory,
@@ -15,10 +14,10 @@ pub trait DynTMValue {
 
 pub trait TMValue: DynTMValue {
     const BYTE_SIZE: usize;
-    fn from_bytes(bytes: [u8; Self::BYTE_SIZE]) -> Self where Self: Sized {
+    fn from_bytes(bytes: &[u8]) -> Self where Self: Sized {
         unsafe {
             let mut value: Self = core::mem::zeroed();
-            Self::read(&mut value, &bytes).unwrap();
+            Self::read(&mut value, bytes).unwrap();
             value
         }
     }
