@@ -3,7 +3,7 @@ use tmtc_system::*;
 
 #[derive(TMValue, Default, PartialEq, Debug, Clone, Copy)]
 pub struct TestValue {
-    val: Option::<u32>,
+    val: Option<u32>,
 }
 
 #[derive(TMValue, Default, PartialEq, Debug, Clone, Copy)]
@@ -20,6 +20,11 @@ pub enum TestEnum {
     FirstVar(i16),
     SecondVar(f32),
     ThirdVar(TestValue),
+}
+
+#[derive(TMValue, Default, PartialEq, Debug, Clone, Copy)]
+pub struct ArrayTest {
+    val: [u32; 5],
 }
 
 macro_rules! to_bytes {

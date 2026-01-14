@@ -106,14 +106,12 @@ impl<T: TMValue> TMValue for Option<T> {
     fn read(bytes: &[u8]) -> Result<(usize, Self), TMValueError> {
         let mut pos = 1;
         match bytes[0] {
-            0u8 => {
-                Ok((pos, None))
-            }
+            0u8 => Ok((pos, None)),
             1u8 => {
                 let (len, value) = T::read(&bytes[pos..])?;
                 pos += len;
                 Ok((pos, Some(value)))
-            },
+            }
             _ => Err(TMValueError::BadEnumVariant),
         }
     }

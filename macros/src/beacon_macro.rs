@@ -1,5 +1,3 @@
-use std::iter::once;
-
 use heck::ToSnakeCase;
 use proc_macro2::TokenStream;
 use quote::{ToTokens, quote};
@@ -34,6 +32,7 @@ pub fn impl_macro(args: Punctuated<Meta, Token![,]>) -> TokenStream {
     let timestamp_path = path_args_iter
         .get(2)
         .expect("args should include timestamp path");
+    let timestamp_type = quote! { <#timestamp_path as InternalTelemetryDefinition>::TMValueType };
 
     let Meta::NameValue(id_nv) = args_iter.next().expect("args should contain id") else {
         panic!("third arg should be id");
@@ -56,7 +55,7 @@ pub fn impl_macro(args: Punctuated<Meta, Token![,]>) -> TokenStream {
         .into_iter()
         .collect();
 
-    let serializable_fields: Vec<_> = tm_definitions
+    let fields: Vec<_> = tm_definitions
         .iter()
         .map(|p| {
             (
@@ -72,18 +71,17 @@ pub fn impl_macro(args: Punctuated<Meta, Token![,]>) -> TokenStream {
         })
         .collect();
 
-    let timestamp_field = (quote! {timestamp}, quote! {#timestamp_path});
-    let fields: Vec<_> = once(&timestamp_field)
-        .chain(serializable_fields.iter())
+    let itd_fields: Vec<_> = fields
+        .iter()
         .map(|(name, path)| (name, quote! { <#path as InternalTelemetryDefinition> }))
         .collect();
 
-    let types: Vec<_> = fields
+    let types: Vec<_> = itd_fields
         .iter()
         .map(|(_, path)| quote! { #path::TMValueType})
         .collect();
 
-    let field_defs: Vec<_> = fields
+    let field_defs: Vec<_> = itd_fields
         .iter()
         .map(|(name, path)| {
             quote! {
@@ -92,16 +90,16 @@ pub fn impl_macro(args: Punctuated<Meta, Token![,]>) -> TokenStream {
         })
         .collect();
 
-    let field_defaults: Vec<_> = fields
+    let field_defaults: Vec<_> = itd_fields
         .iter()
-        .map(|(name, path)| {
+        .map(|(name, _)| {
             quote! {
-                #name: Some(#path::TMValueType::default())
+                #name: None
             }
         })
         .collect();
 
-    let field_set_defaults: Vec<_> = fields
+    let field_set_defaults: Vec<_> = itd_fields
         .iter()
         .map(|(name, _)| {
             quote! {
@@ -110,19 +108,24 @@ pub fn impl_macro(args: Punctuated<Meta, Token![,]>) -> TokenStream {
         })
         .collect();
 
-    let type_parsers = fields.iter().map(|(name, path)| {
-        quote! {{
-            let (len, value) = #path::TMValueType::read(&bytes[pos..]).map_err(|_| ParseError::OutOfMemory)?;
-            pos += len;
-            self.#name = Some(value);
-        }}
-    });
-    let byte_parsers = fields.iter().map(|(name, _)| {
+    let type_parsers = itd_fields.iter().enumerate().map(|(i, (name, path))| {
         quote! {
-            pos += self.#name.unwrap().write(&mut storage[pos..]).unwrap();
+            if bitfield.get(#i) {
+                let (len, value) = #path::TMValueType::read(&bytes[pos..]).map_err(|_| ParseError::OutOfMemory)?;
+                pos += len;
+                self.#name = Some(value);
+            }
         }
     });
-    let type_setters = fields.iter().map(|(name, path)| {
+    let byte_parsers = itd_fields.iter().enumerate().map(|(i, (name, _))| {
+        quote! {
+            if let Some(value) = self.#name {
+                pos += value.write(&mut storage[pos..]).unwrap();
+                bitfield.set(#i);
+            }
+        }
+    });
+    let type_setters = itd_fields.iter().map(|(name, path)| {
         quote! {
            #path::ID => {
                let (_, value) = #path::TMValueType::read(bytes).map_err(|_| BeaconOperationError::OutOfMemory)?;
@@ -130,11 +133,13 @@ pub fn impl_macro(args: Punctuated<Meta, Token![,]>) -> TokenStream {
            }
         }
     });
-    let serializers = serializable_fields.iter().map(|(name, path)| {
+    let serializers = fields.iter().map(|(name, path)| {
         quote! {
-            let nats_value = NatsTelemetry::new(timestamp, self.#name);
-            let bytes = serde_cbor::to_vec(&nats_value).unwrap();
-            serialized_values.push((#path.address(), bytes));
+            if let Some(value) = self.#name {
+                let nats_value = NatsTelemetry::new(timestamp, value);
+                let bytes = serde_cbor::to_vec(&nats_value).unwrap();
+                serialized_values.push((#path.address(), bytes));
+            }
         }
     });
     let serializer_func = if cfg!(feature = "serde") {
@@ -149,21 +154,25 @@ pub fn impl_macro(args: Punctuated<Meta, Token![,]>) -> TokenStream {
     } else {
         quote! {}
     };
-    let header_size: usize = 3;
     let bitfield_size: usize = (fields.len() as f32 / 8.).ceil() as usize;
+    let header_size: usize = 1 + 2 + bitfield_size; // id + crc
 
     quote! {
         pub mod #beacon_module_name {
             use tmtc_system::{internal::*, *};
             const BEACON_ID: u8 = #id;
             pub struct #beacon_name {
+                timestamp: #timestamp_type,
                 #(#field_defs),*
             }
             impl #beacon_name {
-                const BYTE_SIZE: usize = #header_size + #(<#types as TMValue>::BYTE_SIZE)+*;
+                const BYTE_SIZE: usize = #header_size
+                    + <#timestamp_type as TMValue>::BYTE_SIZE
+                    + #(<#types as TMValue>::BYTE_SIZE)+*;
 
                 pub fn new() -> Self {
                     Self {
+                        timestamp: #timestamp_type::default(),
                         #(#field_defaults),*
                     }
                 }
@@ -171,26 +180,48 @@ pub fn impl_macro(args: Punctuated<Meta, Token![,]>) -> TokenStream {
                     if bytes.len() < #header_size {
                         return Err(ParseError::OutOfMemory);
                     }
+                    // Beacon ID
                     if bytes[0] != BEACON_ID {
                         return Err(ParseError::WrongId);
                     }
+                    // Crc
                     let received_crc = u16::from_le_bytes(bytes[1..3].try_into().unwrap());
-                    let calculated_crc = (crc_func)(&bytes[#header_size..]);
+                    let calculated_crc = (crc_func)(&bytes[3..]);
                     if calculated_crc != received_crc {
                         return Err(ParseError::BadCRC);
                     }
                     let mut pos = #header_size;
+                    // Bitfield
+                    let bitfield = Bitfield::<#bitfield_size>::new_from_bytes(bytes[3..#header_size].try_into().unwrap());
+                    // Timestamp
+                    let (len, timestamp_value) = #timestamp_type::read(&bytes[pos..]).map_err(|_| ParseError::OutOfMemory)?;
+                    pos += len;
+                    self.timestamp = timestamp_value;
+                    // Parsers
                     #(#type_parsers)*
                     Ok(())
                 }
                 pub fn to_bytes(&mut self, crc_func: &mut dyn FnMut(&[u8]) -> u16) -> BeaconContainer<{Self::BYTE_SIZE}> {
                     let mut storage = [0u8; Self::BYTE_SIZE];
+                    // Beacon ID
                     storage[0] = BEACON_ID;
                     let mut pos = #header_size;
+                    // Bitfield
+                    let mut bitfield = Bitfield::<#bitfield_size>::new();
+                    // Timestamp
+                    pos += self.timestamp.write(&mut storage[pos..]).unwrap();
+                    // Parsers
                     #(#byte_parsers)*
-                    let crc = (crc_func)(&storage[#header_size..pos]);
+                    // Store Bitfield
+                    storage[3..#header_size].copy_from_slice(bitfield.bytes());
+                    // Crc
+                    let crc = (crc_func)(&storage[3..pos]);
                     storage[1..3].copy_from_slice(&crc.to_le_bytes());
                     BeaconContainer::new(storage, pos)
+                }
+                pub fn to_bytes_with_timestamp(&mut self, timestamp: #timestamp_type, crc_func: &mut dyn FnMut(&[u8]) -> u16) -> BeaconContainer<{Self::BYTE_SIZE}> {
+                    self.timestamp = timestamp;
+                    self.to_bytes(crc_func)
                 }
                 pub fn insert_slice(&mut self, telemetry_definition: &dyn TelemetryDefinition, bytes: &[u8]) -> Result<(), BeaconOperationError> {
                     match telemetry_definition.id() {

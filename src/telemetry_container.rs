@@ -41,14 +41,8 @@ pub struct BeaconContainer<const N: usize> {
     len: usize,
 }
 impl<const N: usize> BeaconContainer<N> {
-    pub fn new(
-        storage: [u8; N],
-        len: usize
-    ) -> Self {
-        Self {
-            storage,
-            len,
-        }
+    pub fn new(storage: [u8; N], len: usize) -> Self {
+        Self { storage, len }
     }
     pub fn bytes(&self) -> &[u8] {
         &self.storage[..self.len]

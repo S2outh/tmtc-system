@@ -1,5 +1,6 @@
 #![feature(iter_intersperse)]
 mod beacon_macro;
+mod macro_utils;
 mod tm_definition_macro_attribute;
 mod tm_value_macro_derive;
 use std::panic;

@@ -1,6 +1,7 @@
 #![no_std]
 #![feature(const_trait_impl)]
 
+mod bitfield;
 mod telemetry_container;
 mod telemetry_value;
 
@@ -26,6 +27,7 @@ pub const trait TelemetryDefinition {
 /// Reexports that should only be used by the macro generated code
 pub mod internal {
     use crate::TMValue;
+    pub use crate::bitfield::Bitfield;
     pub const trait InternalTelemetryDefinition: crate::TelemetryDefinition {
         type TMValueType: crate::TMValue;
         const BYTE_SIZE: usize = Self::TMValueType::BYTE_SIZE;

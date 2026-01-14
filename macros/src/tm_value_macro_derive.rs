@@ -1,3 +1,4 @@
+use crate::macro_utils::parse_type_path;
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::Ident;
@@ -5,7 +6,7 @@ use syn::Ident;
 fn impl_struct(type_name: syn::Ident, tm_value_struct: syn::DataStruct) -> TokenStream {
     let struct_type_parsers = tm_value_struct.fields.iter().map(|f| {
         let ident = &f.ident;
-        let ty = &f.ty;
+        let ty = parse_type_path(&f.ty);
         quote! {
             #ident: {
                 let (len, value) = #ty::read(&bytes[pos..])?;
@@ -65,10 +66,10 @@ fn impl_enum(type_name: syn::Ident, tm_value_enum: syn::DataEnum) -> TokenStream
                         Self::#ident
                     }
                 }
-            },
+            }
             syn::Fields::Unnamed(unnamed_fields) => {
                 let field_parsers = unnamed_fields.unnamed.iter().map(|v| {
-                    let ty = &v.ty;
+                    let ty = parse_type_path(&v.ty);
                     quote! {{
                         let (len, value) = #ty::read(&bytes[pos..])?;
                         pos += len;
@@ -80,8 +81,10 @@ fn impl_enum(type_name: syn::Ident, tm_value_enum: syn::DataEnum) -> TokenStream
                         Self::#ident(#(#field_parsers),*)
                     }
                 }
-            },
-            syn::Fields::Named(_) => unimplemented!("enums with named fields are currently not supported as TMValue"),
+            }
+            syn::Fields::Named(_) => {
+                unimplemented!("enums with named fields are currently not supported as TMValue")
+            }
         }
     });
     let enum_byte_parsers = tm_value_enum.variants.iter().enumerate().map(|(i, v)| {
@@ -94,7 +97,7 @@ fn impl_enum(type_name: syn::Ident, tm_value_enum: syn::DataEnum) -> TokenStream
                         mem[0] = #index;
                     }
                 }
-            },
+            }
             syn::Fields::Unnamed(unnamed_fields) => {
                 let field_idents = (0..unnamed_fields.unnamed.len())
                     .map(|i| Ident::new(&format!("v{}", i), proc_macro2::Span::call_site()));
@@ -109,8 +112,10 @@ fn impl_enum(type_name: syn::Ident, tm_value_enum: syn::DataEnum) -> TokenStream
                         #(#field_parsers)*
                     }
                 }
-            },
-            syn::Fields::Named(_) => unimplemented!("enums with named fields are currently not supported as TMValue"),
+            }
+            syn::Fields::Named(_) => {
+                unimplemented!("enums with named fields are currently not supported as TMValue")
+            }
         }
     });
     quote! {

@@ -20,6 +20,10 @@ mod telemetry {
     struct FirstTMValue;
     #[tmv(crate::TestVector)]
     struct SecondTMValue;
+    #[tmv(Option<i32>)]
+    struct OptionTest;
+    #[tmv([i16; 2])]
+    struct ArrayTest;
     #[tmm(id = 100)]
     mod some_other_mod {
         #[tmv(u64)]
