@@ -1,55 +1,38 @@
-use heapless::Vec;
-
 #[derive(Debug)]
-pub enum TMValueError{
+pub enum TMValueError {
     OutOfMemory,
-    BadEnumVariant
+    BadEnumVariant,
 }
 
 // # Trait definitions
-pub trait DynTMValue {
-    fn read(&mut self, bytes: &[u8]) -> Result<usize, TMValueError>;
-    fn write(&self, mem: &mut [u8]) -> Result<usize, TMValueError>;
-}
-
-pub trait TMValue: DynTMValue {
+pub trait TMValue {
     const BYTE_SIZE: usize;
-    fn from_bytes(bytes: &[u8]) -> Result<Self, TMValueError> where Self: Sized {
-        unsafe {
-            let mut value: Self = core::mem::zeroed();
-            Self::read(&mut value, bytes)?;
-            Ok(value)
-        }
-    }
-    fn to_bytes(&self) -> [u8; Self::BYTE_SIZE] {
-        let mut bytes = [0u8; Self::BYTE_SIZE];
-        self.write(&mut bytes).unwrap();
-        bytes
-    }
+    fn read(bytes: &[u8]) -> Result<(usize, Self), TMValueError>
+    where
+        Self: Sized;
+    fn write(&self, mem: &mut [u8]) -> Result<usize, TMValueError>;
 }
 
 // # Primitives
 macro_rules! primitive_value {
     ($type:ident) => {
-        impl DynTMValue for $type {
-            fn read(&mut self, bytes: &[u8]) -> Result<usize, TMValueError> {
+        impl TMValue for $type {
+            const BYTE_SIZE: usize = size_of::<Self>();
+            fn read(bytes: &[u8]) -> Result<(usize, Self), TMValueError> {
                 if bytes.len() < Self::BYTE_SIZE {
                     return Err(TMValueError::OutOfMemory);
                 }
-                *self = Self::from_le_bytes(bytes[..Self::BYTE_SIZE].try_into().unwrap());
-                Ok(Self::BYTE_SIZE)
+                let value = Self::from_le_bytes(bytes[..Self::BYTE_SIZE].try_into().unwrap());
+                Ok((Self::BYTE_SIZE, value))
             }
             fn write(&self, mem: &mut [u8]) -> Result<usize, TMValueError> {
                 if mem.len() < Self::BYTE_SIZE {
-                    return Err(TMValueError::OutOfMemory)
+                    return Err(TMValueError::OutOfMemory);
                 }
                 let bytes = self.to_le_bytes();
                 mem[..Self::BYTE_SIZE].copy_from_slice(&bytes);
                 Ok(Self::BYTE_SIZE)
             }
-        }
-        impl TMValue for $type {
-            const BYTE_SIZE: usize = size_of::<Self>();
         }
     };
 }
@@ -72,66 +55,67 @@ primitive_value!(f32);
 primitive_value!(f64);
 
 // # Arrays
-impl<const N: usize, T: TMValue> DynTMValue for [T; N] {
-    fn read(&mut self, bytes: &[u8]) -> Result<usize, TMValueError> {
-        let mut pos = 0;
-        for i in 0..N {
-            pos += self[i].read(&bytes[pos..])?;
-        }
-        Ok(pos)
-    }
-    fn write(&self, mem: &mut [u8]) -> Result<usize, TMValueError> {
-        let mut pos = 0;
-        for i in 0..N {
-            pos += self[i].write(&mut mem[pos..])?;
-        }
-        Ok(pos)
-    }
-}
 impl<const N: usize, T: TMValue> TMValue for [T; N] {
     const BYTE_SIZE: usize = N * T::BYTE_SIZE;
-}
-// # Vectors
-impl<const N: usize, T: TMValue> DynTMValue for Vec<T, N> {
-    fn read(&mut self, bytes: &[u8]) -> Result<usize, TMValueError> {
-        let mut len = 0;
-        let mut pos = len.read(bytes)?;
-        for i in 0..len {
-            unsafe {
-                let _ = self.push(core::mem::zeroed());
+    fn read(bytes: &[u8]) -> Result<(usize, Self), TMValueError> {
+        unsafe {
+            let mut pos = 0;
+            let mut arr: Self = core::mem::zeroed();
+            for i in 0..N {
+                let (len, value) = T::read(&bytes[pos..])?;
+                pos += len;
+                arr[i] = value;
             }
-            pos += self[i].read(&bytes[pos..])?;
+            Ok((pos, arr))
         }
-        Ok(pos)
     }
     fn write(&self, mem: &mut [u8]) -> Result<usize, TMValueError> {
         let mut pos = 0;
-        for i in 0..self.len() {
+        for i in 0..N {
             pos += self[i].write(&mut mem[pos..])?;
         }
         Ok(pos)
     }
 }
-impl<const N: usize, T: TMValue> TMValue for Vec<T, N> {
-    const BYTE_SIZE: usize = N * T::BYTE_SIZE;
-}
+// # Vectors
+// use heapless::Vec;
+// impl<const N: usize, T: TMValue> TMValue for Vec<T, N> {
+//     const BYTE_SIZE: usize = N * T::BYTE_SIZE;
+//     fn read(bytes: &[u8]) -> Result<(usize, Self), TMValueError> {
+//         let (mut pos, len) = u8::read(bytes)?;
+//         let mut vec = Vec::new();
+//         for _ in 0..len {
+//             let (len, value) = T::read(&bytes[pos..])?;
+//             vec.push(value);
+//             pos += len;
+//         }
+//         Ok((pos, vec))
+//     }
+//     fn write(&self, mem: &mut [u8]) -> Result<usize, TMValueError> {
+//         let mut pos = (self.len() as u8).write(mem)?;
+//         for i in 0..self.len() {
+//             pos += self[i].write(&mut mem[pos..])?;
+//         }
+//         Ok(pos)
+//     }
+// }
 
 // # Options
-impl<T: TMValue> DynTMValue for Option<T> {
-    fn read(&mut self, bytes: &[u8]) -> Result<usize, TMValueError> {
+impl<T: TMValue> TMValue for Option<T> {
+    const BYTE_SIZE: usize = 1 + T::BYTE_SIZE;
+    fn read(bytes: &[u8]) -> Result<(usize, Self), TMValueError> {
         let mut pos = 1;
         match bytes[0] {
             0u8 => {
-                *self = None;
+                Ok((pos, None))
             }
-            1u8 => unsafe {
-                let mut v0: T = core::mem::zeroed();
-                pos += v0.read(&bytes[pos..])?;
-                *self = Some(v0);
+            1u8 => {
+                let (len, value) = T::read(&bytes[pos..])?;
+                pos += len;
+                Ok((pos, Some(value)))
             },
-            _ => return Err(TMValueError::BadEnumVariant),
+            _ => Err(TMValueError::BadEnumVariant),
         }
-        Ok(pos)
     }
     fn write(&self, mem: &mut [u8]) -> Result<usize, TMValueError> {
         let mut pos = 1;
@@ -146,7 +130,4 @@ impl<T: TMValue> DynTMValue for Option<T> {
         }
         Ok(pos)
     }
-}
-impl<T: TMValue> TMValue for Option<T> {
-    const BYTE_SIZE: usize = 1 + T::BYTE_SIZE;
 }

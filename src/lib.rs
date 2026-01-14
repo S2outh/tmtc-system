@@ -1,11 +1,8 @@
 #![no_std]
-#![allow(incomplete_features)]
-#![feature(generic_const_exprs)] // this is beeing used to provide a TMValue blanket impl, might be
-                                 // unstable
 #![feature(const_trait_impl)]
 
-mod telemetry_value;
 mod telemetry_container;
+mod telemetry_value;
 
 // macro reexports
 pub use macros::TMValue;
@@ -14,12 +11,13 @@ pub use macros::telemetry_definition;
 
 // value reexports
 pub use telemetry_value::TMValue;
-pub use telemetry_value::DynTMValue;
 pub use telemetry_value::TMValueError;
 
 // container reexports
 pub use telemetry_container::TelemetryContainer;
 pub use telemetry_container::UnsupportedValue;
+
+pub use telemetry_container::BeaconContainer;
 
 pub const trait TelemetryDefinition {
     fn id(&self) -> u16;
@@ -28,7 +26,7 @@ pub const trait TelemetryDefinition {
 /// Reexports that should only be used by the macro generated code
 pub mod internal {
     use crate::TMValue;
-    pub trait InternalTelemetryDefinition: crate::TelemetryDefinition {
+    pub const trait InternalTelemetryDefinition: crate::TelemetryDefinition {
         type TMValueType: crate::TMValue;
         const BYTE_SIZE: usize = Self::TMValueType::BYTE_SIZE;
         const ID: u16;
@@ -54,7 +52,7 @@ pub struct NotFoundError;
 #[derive(Debug)]
 pub enum BeaconOperationError {
     DefNotInBeacon,
-    OutOfMemory
+    OutOfMemory,
 }
 
 #[derive(Debug)]
@@ -63,12 +61,3 @@ pub enum ParseError {
     BadCRC,
     OutOfMemory,
 }
-
-pub trait Beacon {
-    fn insert_slice(&mut self, telemetry_definition: &dyn TelemetryDefinition, bytes: &[u8]) -> Result<(), BeaconOperationError>;
-    fn get_slice<'b>(&'b mut self, telemetry_definition: &dyn TelemetryDefinition) -> Result<&'b [u8], BeaconOperationError>;
-    fn from_bytes(&mut self, bytes: &[u8], crc_func: &mut dyn FnMut(&[u8]) -> u16) -> Result<(), ParseError>;
-    fn bytes(&mut self, crc_func: &mut dyn FnMut(&[u8]) -> u16) -> &[u8];
-    fn flush(&mut self);
-}
-

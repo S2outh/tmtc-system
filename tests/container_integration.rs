@@ -4,20 +4,19 @@ use tmtc_system::*;
 
 #[derive(TMValue, Default, Clone, Copy)]
 pub struct TestValue {
-    val: u32
+    val: u32,
 }
 
 #[derive(TMValue, Default, Clone, Copy)]
 pub struct TestVector {
     x: i16,
     y: f32,
-    z: TestValue
+    z: TestValue,
 }
-
 
 #[telemetry_definition(id = 0)]
 mod telemetry {
-    #[tmv(u32, address = "first_value")]
+    #[tmv(u32)]
     struct FirstTMValue;
     #[tmv(crate::TestVector)]
     struct SecondTMValue;
@@ -38,8 +37,9 @@ type FullTestContainer = telemetry_container!(telemetry);
 #[test]
 fn partial_container_creation() {
     assert_eq!(telemetry::some_other_mod::MAX_BYTE_SIZE, 8);
-    
-    let container = PartialTestContainer::new(&telemetry::some_other_mod::FourthTMValue, &42).unwrap();
+
+    let container =
+        PartialTestContainer::new(&telemetry::some_other_mod::FourthTMValue, &42).unwrap();
     assert_eq!(container.id(), 101);
 
     assert_eq!(container.bytes().len(), 4);
@@ -49,8 +49,16 @@ fn partial_container_creation() {
 #[test]
 fn full_container_creation() {
     assert_eq!(telemetry::MAX_BYTE_SIZE, 10);
-    
-    let container = FullTestContainer::new(&telemetry::SecondTMValue, &TestVector{ x: 12, y: 24., z: TestValue { val: 36 }}).unwrap();
+
+    let container = FullTestContainer::new(
+        &telemetry::SecondTMValue,
+        &TestVector {
+            x: 12,
+            y: 24.,
+            z: TestValue { val: 36 },
+        },
+    )
+    .unwrap();
     assert_eq!(container.id(), 1);
 
     assert_eq!(container.bytes().len(), 10);

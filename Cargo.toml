@@ -8,5 +8,5 @@ serde = ["dep:serde", "macros/serde"]
 
 [dependencies]
 macros = { package = "tmtc-system-macros", path = "./macros/" }
-heapless = { version = "0.9", default-features = false }
+#heapless = { version = "0.9", default-features = false }
 serde = { version = "1.0.228", default-features = false, features = ["derive"], optional = true }

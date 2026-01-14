@@ -1,4 +1,4 @@
-use crate::{DynTMValue, TelemetryDefinition};
+use crate::{TMValue, TelemetryDefinition};
 
 #[macro_export]
 macro_rules! telemetry_container {
@@ -16,10 +16,17 @@ pub struct TelemetryContainer<const N: usize> {
     len: usize,
 }
 impl<const N: usize> TelemetryContainer<N> {
-    pub fn new(definition: &dyn TelemetryDefinition, value: &dyn DynTMValue) -> Result<Self, UnsupportedValue> {
+    pub fn new(
+        definition: &dyn TelemetryDefinition,
+        value: &impl TMValue,
+    ) -> Result<Self, UnsupportedValue> {
         let mut storage = [0u8; N];
         let len = value.write(&mut storage).map_err(|_| UnsupportedValue)?;
-        Ok(Self { id: definition.id(), storage, len })
+        Ok(Self {
+            id: definition.id(),
+            storage,
+            len,
+        })
     }
     pub fn id(&self) -> u16 {
         self.id
@@ -29,3 +36,21 @@ impl<const N: usize> TelemetryContainer<N> {
     }
 }
 
+pub struct BeaconContainer<const N: usize> {
+    storage: [u8; N],
+    len: usize,
+}
+impl<const N: usize> BeaconContainer<N> {
+    pub fn new(
+        storage: [u8; N],
+        len: usize
+    ) -> Self {
+        Self {
+            storage,
+            len,
+        }
+    }
+    pub fn bytes(&self) -> &[u8] {
+        &self.storage[..self.len]
+    }
+}
