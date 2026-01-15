@@ -225,6 +225,10 @@ pub fn impl_macro(args: Punctuated<Meta, Token![,]>) -> TokenStream {
                 }
                 fn insert_slice(&mut self, telemetry_definition: &dyn TelemetryDefinition, bytes: &[u8]) -> Result<(), BeaconOperationError> {
                     match telemetry_definition.id() {
+                        <#timestamp_path as InternalTelemetryDefinition>::ID => {
+                            let (_, value) = #timestamp_type::read(bytes).map_err(|_| BeaconOperationError::OutOfMemory)?;
+                            self.timestamp = value;
+                        }
                         #(#type_setters)*
                         _ => return Err(BeaconOperationError::DefNotInBeacon),
                     };
