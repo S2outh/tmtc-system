@@ -114,6 +114,8 @@ pub fn impl_macro(args: Punctuated<Meta, Token![,]>) -> TokenStream {
                 let (len, value) = #path::TMValueType::read(&bytes[pos..]).map_err(|_| ParseError::OutOfMemory)?;
                 pos += len;
                 self.#name = Some(value);
+            } else {
+                self.#name = None;
             }
         }
     });
