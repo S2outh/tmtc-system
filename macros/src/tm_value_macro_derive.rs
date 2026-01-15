@@ -48,7 +48,9 @@ fn impl_enum(type_name: syn::Ident, tm_value_enum: syn::DataEnum) -> TokenStream
             syn::Fields::Unnamed(unnamed_fields) => Box::new(unnamed_fields.unnamed.iter()),
             syn::Fields::Named(named_fields) => Box::new(named_fields.named.iter()),
         };
-        let sizes = iter.map(|f| &f.ty).map(|ty| quote! { #ty::BYTE_SIZE });
+        let sizes = iter
+            .map(|f| parse_type_path(&f.ty))
+            .map(|ty| quote! { #ty::BYTE_SIZE });
         quote! {
             let variant_size = 1usize #(+ #sizes)*;
             if variant_size > m {

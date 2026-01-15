@@ -17,7 +17,7 @@ pub struct TestVector {
 pub enum TestEnum {
     #[default]
     EmptyVar,
-    FirstVar(i16),
+    FirstVar(Option<i16>),
     SecondVar(f32),
     ThirdVar(TestValue),
 }
