@@ -120,7 +120,7 @@ pub fn impl_macro(args: Punctuated<Meta, Token![,]>) -> TokenStream {
     let byte_parsers = itd_fields.iter().enumerate().map(|(i, (name, _))| {
         quote! {
             if let Some(value) = self.#name {
-                pos += value.write(&mut storage[pos..]).unwrap();
+                pos += value.write(&mut self.storage[pos..]).unwrap();
                 bitfield.set(#i);
             }
         }
@@ -162,7 +162,8 @@ pub fn impl_macro(args: Punctuated<Meta, Token![,]>) -> TokenStream {
             use tmtc_system::{internal::*, *};
             const BEACON_ID: u8 = #id;
             pub struct #beacon_name {
-                timestamp: #timestamp_type,
+                storage: [u8; Self::BYTE_SIZE],
+                pub timestamp: #timestamp_type,
                 #(#field_defs),*
             }
             impl #beacon_name {
@@ -172,11 +173,15 @@ pub fn impl_macro(args: Punctuated<Meta, Token![,]>) -> TokenStream {
 
                 pub fn new() -> Self {
                     Self {
+                        storage: [0u8; Self::BYTE_SIZE],
                         timestamp: #timestamp_type::default(),
                         #(#field_defaults),*
                     }
                 }
-                pub fn from_bytes(&mut self, bytes: &[u8], crc_func: &mut dyn FnMut(&[u8]) -> u16) -> Result<(), ParseError> {
+                #serializer_func
+            }
+            impl Beacon for #beacon_name {
+                fn from_bytes(&mut self, bytes: &[u8], crc_func: &mut dyn FnMut(&[u8]) -> u16) -> Result<(), ParseError> {
                     if bytes.len() < #header_size {
                         return Err(ParseError::OutOfMemory);
                     }
@@ -201,39 +206,33 @@ pub fn impl_macro(args: Punctuated<Meta, Token![,]>) -> TokenStream {
                     #(#type_parsers)*
                     Ok(())
                 }
-                pub fn to_bytes(&mut self, crc_func: &mut dyn FnMut(&[u8]) -> u16) -> BeaconContainer<{Self::BYTE_SIZE}> {
-                    let mut storage = [0u8; Self::BYTE_SIZE];
+                fn to_bytes(&mut self, crc_func: &mut dyn FnMut(&[u8]) -> u16) -> &[u8] {
                     // Beacon ID
-                    storage[0] = BEACON_ID;
+                    self.storage[0] = BEACON_ID;
                     let mut pos = #header_size;
                     // Bitfield
                     let mut bitfield = Bitfield::<#bitfield_size>::new();
                     // Timestamp
-                    pos += self.timestamp.write(&mut storage[pos..]).unwrap();
+                    pos += self.timestamp.write(&mut self.storage[pos..]).unwrap();
                     // Parsers
                     #(#byte_parsers)*
                     // Store Bitfield
-                    storage[3..#header_size].copy_from_slice(bitfield.bytes());
+                    self.storage[3..#header_size].copy_from_slice(bitfield.bytes());
                     // Crc
-                    let crc = (crc_func)(&storage[3..pos]);
-                    storage[1..3].copy_from_slice(&crc.to_le_bytes());
-                    BeaconContainer::new(storage, pos)
+                    let crc = (crc_func)(&self.storage[3..pos]);
+                    self.storage[1..3].copy_from_slice(&crc.to_le_bytes());
+                    &self.storage[..pos]
                 }
-                pub fn to_bytes_with_timestamp(&mut self, timestamp: #timestamp_type, crc_func: &mut dyn FnMut(&[u8]) -> u16) -> BeaconContainer<{Self::BYTE_SIZE}> {
-                    self.timestamp = timestamp;
-                    self.to_bytes(crc_func)
-                }
-                pub fn insert_slice(&mut self, telemetry_definition: &dyn TelemetryDefinition, bytes: &[u8]) -> Result<(), BeaconOperationError> {
+                fn insert_slice(&mut self, telemetry_definition: &dyn TelemetryDefinition, bytes: &[u8]) -> Result<(), BeaconOperationError> {
                     match telemetry_definition.id() {
                         #(#type_setters)*
                         _ => return Err(BeaconOperationError::DefNotInBeacon),
                     };
                     Ok(())
                 }
-                pub fn flush(&mut self) {
+                fn flush(&mut self) {
                     #(#field_set_defaults)*
                 }
-                #serializer_func
             }
         }
     }

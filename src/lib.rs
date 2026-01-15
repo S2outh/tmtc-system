@@ -18,8 +18,6 @@ pub use telemetry_value::TMValueError;
 pub use telemetry_container::TelemetryContainer;
 pub use telemetry_container::UnsupportedValue;
 
-pub use telemetry_container::BeaconContainer;
-
 pub const trait TelemetryDefinition {
     fn id(&self) -> u16;
     fn address(&self) -> &str;
@@ -62,4 +60,19 @@ pub enum ParseError {
     WrongId,
     BadCRC,
     OutOfMemory,
+}
+
+pub trait Beacon {
+    fn insert_slice(
+        &mut self,
+        telemetry_definition: &dyn TelemetryDefinition,
+        bytes: &[u8],
+    ) -> Result<(), BeaconOperationError>;
+    fn from_bytes(
+        &mut self,
+        bytes: &[u8],
+        crc_func: &mut dyn FnMut(&[u8]) -> u16,
+    ) -> Result<(), ParseError>;
+    fn to_bytes(&mut self, crc_func: &mut dyn FnMut(&[u8]) -> u16) -> &[u8];
+    fn flush(&mut self);
 }

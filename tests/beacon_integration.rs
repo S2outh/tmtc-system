@@ -79,10 +79,7 @@ fn beacon_creation() {
     beacon.some_other_mod_third_tm_value = Some(third_value);
 
     let sizes = [3, 1, 8, 4, (4), (2 + 4 + 4)];
-    assert_eq!(
-        beacon.to_bytes(&mut crc_ccitt).bytes().len(),
-        sizes.iter().sum()
-    );
+    assert_eq!(beacon.to_bytes(&mut crc_ccitt).len(), sizes.iter().sum());
 }
 
 #[test]
@@ -101,8 +98,7 @@ fn beacon_insertion() {
     beacon.second_tm_value = Some(second_value);
     beacon.some_other_mod_third_tm_value = Some(third_value);
 
-    let beacon_container = beacon.to_bytes(&mut crc_ccitt);
-    let bytes = beacon_container.bytes();
+    let bytes = beacon.to_bytes(&mut crc_ccitt);
     let crc = crc_ccitt(&bytes[3..]);
     // calculated with
     // https://www.crccalc.com/?crc=00, 00, 00, 00, 00, 00, 00, 00, D2, 04, 00, 00, 03, 00, 00, 00, 03, 00, 33, 33, 53, 40, 01, 00, 00, 00&method=CRC-16/CCITT-FALSE&datatype=hex&outtype=hex
@@ -151,8 +147,8 @@ fn beacon_insertion_id() {
     beacon.some_other_mod_third_tm_value = Some(third_value);
 
     assert_eq!(
-        id_beacon.to_bytes(&mut crc_ccitt).bytes(),
-        beacon.to_bytes(&mut crc_ccitt).bytes()
+        id_beacon.to_bytes(&mut crc_ccitt),
+        beacon.to_bytes(&mut crc_ccitt)
     );
 }
 
@@ -193,7 +189,7 @@ fn beacon_insertion_address() {
     beacon.some_other_mod_third_tm_value = Some(third_value);
 
     assert_eq!(
-        address_beacon.to_bytes(&mut crc_ccitt).bytes(),
-        beacon.to_bytes(&mut crc_ccitt).bytes()
+        address_beacon.to_bytes(&mut crc_ccitt),
+        beacon.to_bytes(&mut crc_ccitt)
     );
 }
