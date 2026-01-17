@@ -182,7 +182,7 @@ pub fn impl_macro(args: Punctuated<Meta, Token![,]>) -> TokenStream {
                 }
                 #serializer_func
             }
-            impl Beacon for #beacon_name {
+            impl Beacon<#timestamp_type> for #beacon_name {
                 fn from_bytes(&mut self, bytes: &[u8], crc_func: &mut dyn FnMut(&[u8]) -> u16) -> Result<(), ParseError> {
                     if bytes.len() < #header_size {
                         return Err(ParseError::OutOfMemory);
@@ -224,6 +224,9 @@ pub fn impl_macro(args: Punctuated<Meta, Token![,]>) -> TokenStream {
                     let crc = (crc_func)(&self.storage[3..pos]);
                     self.storage[1..3].copy_from_slice(&crc.to_le_bytes());
                     &self.storage[..pos]
+                }
+                fn set_timestamp(&mut self, timestamp: #timestamp_type) {
+                    self.timestamp = timestamp;
                 }
                 fn insert_slice(&mut self, telemetry_definition: &dyn TelemetryDefinition, bytes: &[u8]) -> Result<(), BeaconOperationError> {
                     match telemetry_definition.id() {
