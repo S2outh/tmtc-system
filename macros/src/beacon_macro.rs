@@ -139,14 +139,14 @@ pub fn impl_macro(args: Punctuated<Meta, Token![,]>) -> TokenStream {
         quote! {
             if let Some(value) = self.#name {
                 let nats_value = NatsTelemetry::new(timestamp, value);
-                let bytes = (&nats_value).erased_serialize(serializer)?;
+                let bytes = serializer.serialize(&nats_value)?;
                 serialized_values.push((#path.address(), bytes));
             }
         }
     });
     let serializer_func = if cfg!(feature = "serde") {
         quote! {
-            pub fn serialize(&self, serializer: &mut dyn Serializer) -> Result<Vec<(&'static str, Vec<u8>)>, erased_serde::Error> {
+            pub fn serialize(&self, serializer: &dyn Serializer) -> Result<Vec<(&'static str, Vec<u8>)>, SerializationError> {
                 let mut serialized_values = Vec::new();
                 let timestamp = self.timestamp;
                 #(#serializers)*
@@ -159,7 +159,6 @@ pub fn impl_macro(args: Punctuated<Meta, Token![,]>) -> TokenStream {
     let serializer_imports = if cfg!(feature = "serde") {
         quote! {
             use alloc::vec::Vec;
-            use erased_serde::{self, Serializer, Serialize};
         }
     } else {
         quote! {}

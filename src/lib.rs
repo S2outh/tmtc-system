@@ -46,6 +46,7 @@ pub mod internal {
     }
 }
 
+// Error types
 #[derive(Debug)]
 pub struct NotFoundError;
 
@@ -62,6 +63,7 @@ pub enum ParseError {
     OutOfMemory,
 }
 
+// Dynamic beacon trait
 pub trait Beacon {
     type Timestamp;
     fn insert_slice(
@@ -77,4 +79,20 @@ pub trait Beacon {
     fn to_bytes(&mut self, crc_func: &mut dyn FnMut(&[u8]) -> u16) -> &[u8];
     fn set_timestamp(&mut self, timestamp: Self::Timestamp);
     fn flush(&mut self);
+}
+
+// stuff regarding serialization
+#[cfg(feature = "serde")]
+extern crate alloc;
+
+#[cfg(feature = "serde")]
+#[derive(Debug)]
+pub struct SerializationError;
+
+#[cfg(feature = "serde")]
+pub trait Serializer {
+    fn serialize<T: serde::Serialize>(
+        &self,
+        value: &T,
+    ) -> Result<alloc::vec::Vec<u8>, SerializationError>;
 }
