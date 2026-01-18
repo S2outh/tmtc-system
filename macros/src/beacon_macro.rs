@@ -139,15 +139,13 @@ pub fn impl_macro(args: Punctuated<Meta, Token![,]>) -> TokenStream {
         quote! {
             if let Some(value) = self.#name {
                 let nats_value = NatsTelemetry::new(timestamp, value);
-                let bytes = nats_value.erased_serialize(serializer)?;
+                let bytes = (&nats_velue).erased_serialize(serializer)?;
                 serialized_values.push((#path.address(), bytes));
             }
         }
     });
     let serializer_func = if cfg!(feature = "serde") {
         quote! {
-            use alloc::vec::Vec;
-            use erased_serde::{self, Serializer};
             pub fn serialize(&self, serializer: &dyn Serializer) -> Result<Vec<(&'static str, Vec<u8>)>, erased_serde::Error> {
                 let mut serialized_values = Vec::new();
                 let timestamp = self.timestamp;
@@ -158,12 +156,22 @@ pub fn impl_macro(args: Punctuated<Meta, Token![,]>) -> TokenStream {
     } else {
         quote! {}
     };
+    let serializer_imports = if cfg!(feature = "serde") {
+        quote! {
+            use alloc::vec::Vec;
+            use erased_serde::{self, Serializer, Serialize};
+        }
+    } else {
+        quote! {}
+    };
+
     let bitfield_size: usize = (fields.len() as f32 / 8.).ceil() as usize;
     let header_size: usize = 1 + 2 + bitfield_size; // id + crc
 
     quote! {
         pub mod #beacon_module_name {
             use tmtc_system::{internal::*, *};
+            #serializer_imports
             const BEACON_ID: u8 = #id;
             pub struct #beacon_name {
                 storage: [u8; Self::BYTE_SIZE],
