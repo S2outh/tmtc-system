@@ -139,18 +139,20 @@ pub fn impl_macro(args: Punctuated<Meta, Token![,]>) -> TokenStream {
         quote! {
             if let Some(value) = self.#name {
                 let nats_value = NatsTelemetry::new(timestamp, value);
-                let bytes = serde_cbor::to_vec(&nats_value).unwrap();
+                let bytes = nats_value.erased_serialize(serializer)?;
                 serialized_values.push((#path.address(), bytes));
             }
         }
     });
     let serializer_func = if cfg!(feature = "serde") {
         quote! {
-            pub fn serialize(&self) -> alloc::vec::Vec<(&'static str, alloc::vec::Vec<u8>)> {
-                let mut serialized_values = alloc::vec::Vec::new();
+            use alloc::vec::Vec;
+            use erased_serde::{self, Serializer};
+            pub fn serialize(&self, serializer: &dyn Serializer) -> Result<Vec<(&'static str, Vec<u8>)>, erased_serde::Error> {
+                let mut serialized_values = Vec::new();
                 let timestamp = self.timestamp;
                 #(#serializers)*
-                serialized_values
+                Ok(serialized_values)
             }
         }
     } else {
@@ -182,7 +184,8 @@ pub fn impl_macro(args: Punctuated<Meta, Token![,]>) -> TokenStream {
                 }
                 #serializer_func
             }
-            impl Beacon<#timestamp_type> for #beacon_name {
+            impl Beacon for #beacon_name {
+                type Timestamp = #timestamp_type;
                 fn from_bytes(&mut self, bytes: &[u8], crc_func: &mut dyn FnMut(&[u8]) -> u16) -> Result<(), ParseError> {
                     if bytes.len() < #header_size {
                         return Err(ParseError::OutOfMemory);
@@ -225,15 +228,11 @@ pub fn impl_macro(args: Punctuated<Meta, Token![,]>) -> TokenStream {
                     self.storage[1..3].copy_from_slice(&crc.to_le_bytes());
                     &self.storage[..pos]
                 }
-                fn set_timestamp(&mut self, timestamp: #timestamp_type) {
+                fn set_timestamp(&mut self, timestamp: Self::Timestamp) {
                     self.timestamp = timestamp;
                 }
                 fn insert_slice(&mut self, telemetry_definition: &dyn TelemetryDefinition, bytes: &[u8]) -> Result<(), BeaconOperationError> {
                     match telemetry_definition.id() {
-                        <#timestamp_path as InternalTelemetryDefinition>::ID => {
-                            let (_, value) = #timestamp_type::read(bytes).map_err(|_| BeaconOperationError::OutOfMemory)?;
-                            self.timestamp = value;
-                        }
                         #(#type_setters)*
                         _ => return Err(BeaconOperationError::DefNotInBeacon),
                     };

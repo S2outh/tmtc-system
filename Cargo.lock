@@ -69,7 +69,7 @@ dependencies = [
 
 [[package]]
 name = "tmtc-system"
-version = "1.3.2"
+version = "1.4.0"
 dependencies = [
  "serde",
  "tmtc-system-macros",

@@ -62,7 +62,8 @@ pub enum ParseError {
     OutOfMemory,
 }
 
-pub trait Beacon<T> {
+pub trait Beacon {
+    type Timestamp;
     fn insert_slice(
         &mut self,
         telemetry_definition: &dyn TelemetryDefinition,
@@ -74,6 +75,6 @@ pub trait Beacon<T> {
         crc_func: &mut dyn FnMut(&[u8]) -> u16,
     ) -> Result<(), ParseError>;
     fn to_bytes(&mut self, crc_func: &mut dyn FnMut(&[u8]) -> u16) -> &[u8];
-    fn set_timestamp(&mut self, timestamp: T);
+    fn set_timestamp(&mut self, timestamp: Self::Timestamp);
     fn flush(&mut self);
 }
