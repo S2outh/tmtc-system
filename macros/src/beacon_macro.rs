@@ -139,7 +139,7 @@ pub fn impl_macro(args: Punctuated<Meta, Token![,]>) -> TokenStream {
         quote! {
             if let Some(value) = self.#name {
                 let nats_value = NatsTelemetry::new(timestamp, value);
-                let bytes = (&nats_velue).erased_serialize(serializer)?;
+                let bytes = (&nats_value).erased_serialize(serializer)?;
                 serialized_values.push((#path.address(), bytes));
             }
         }
