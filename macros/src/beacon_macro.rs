@@ -146,7 +146,7 @@ pub fn impl_macro(args: Punctuated<Meta, Token![,]>) -> TokenStream {
     });
     let serializer_func = if cfg!(feature = "serde") {
         quote! {
-            pub fn serialize(&self, serializer: &dyn Serializer) -> Result<Vec<(&'static str, Vec<u8>)>, SerializationError> {
+            pub fn serialize(&self, serializer: &impl Serializer) -> Result<Vec<(&'static str, Vec<u8>)>, SerializationError> {
                 let mut serialized_values = Vec::new();
                 let timestamp = self.timestamp;
                 #(#serializers)*

@@ -86,13 +86,8 @@ pub trait Beacon {
 extern crate alloc;
 
 #[cfg(feature = "serde")]
-#[derive(Debug)]
-pub struct SerializationError;
-
-#[cfg(feature = "serde")]
 pub trait Serializer {
-    fn serialize<T: serde::Serialize>(
-        &self,
-        value: &T,
-    ) -> Result<alloc::vec::Vec<u8>, SerializationError>;
+    type Error;
+    fn serialize<T: serde::Serialize>(&self, value: &T)
+    -> Result<alloc::vec::Vec<u8>, Self::Error>;
 }
