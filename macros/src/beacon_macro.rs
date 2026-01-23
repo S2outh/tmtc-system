@@ -165,20 +165,20 @@ pub fn impl_macro(args: Punctuated<Meta, Token![,]>) -> TokenStream {
     };
 
     let bitfield_size: usize = (fields.len() as f32 / 8.).ceil() as usize;
-    let header_size: usize = 1 + 2 + bitfield_size; // id + crc
+    let header_size: usize = 1 + 2 + bitfield_size; // id + crc + bitfield
 
     quote! {
         pub mod #beacon_module_name {
             use tmtc_system::{internal::*, *};
             #serializer_imports
-            const BEACON_ID: u8 = #id;
+            pub const BEACON_ID: u8 = #id;
             pub struct #beacon_name {
                 storage: [u8; Self::BYTE_SIZE],
                 pub timestamp: #timestamp_type,
                 #(#field_defs),*
             }
             impl #beacon_name {
-                const BYTE_SIZE: usize = #header_size
+                pub const BYTE_SIZE: usize = #header_size
                     + <#timestamp_type as TMValue>::BYTE_SIZE
                     + #(<#types as TMValue>::BYTE_SIZE)+*;
 
