@@ -35,12 +35,12 @@ pub mod internal {
     #[cfg_attr(feature = "serde", derive(serde::Serialize))]
     #[cfg(feature = "serde")]
     pub struct NatsTelemetry<T: serde::Serialize> {
-        timestamp: i64,
+        timestamp: u64,
         value: T,
     }
     #[cfg(feature = "serde")]
     impl<T: serde::Serialize> NatsTelemetry<T> {
-        pub fn new(timestamp: i64, value: T) -> Self {
+        pub fn new(timestamp: u64, value: T) -> Self {
             Self { timestamp, value }
         }
     }
