@@ -20,7 +20,7 @@ fn generate_module_recursive(
             match v {
                 syn::Item::Struct(v) => {
                     // Parse "tmv" attribute
-                    let tmty: syn::Type = v
+                    let args = v
                         .attrs
                         .iter()
                         .find(|attr| attr.path().is_ident(TM_VALUE_MACRO_NAME))
@@ -28,17 +28,26 @@ fn generate_module_recursive(
                             "Struct {} has no {} attribute",
                             &v.ident, TM_VALUE_MACRO_NAME
                         ))
-                        .parse_args()
+                        .parse_args_with(Punctuated::<syn::Type, Token![,]>::parse_separated_nonempty)
                         .expect(&format!(
                             "Could not parse {} attribute parameters",
                             TM_VALUE_MACRO_NAME
                         ));
-                    let ty = &v.ident;
+                    let mut args_iter = args
+                        .into_iter();
+                    let tmty = args_iter
+                        .next()
+                        .expect("missing type");
+                    let optional_ground_func = args_iter
+                        .next();
+
+                    // this definitions name
+                    let def = &v.ident;
                     // Parse rust address of the struct inside the telemetry module tree
-                    let ty_addr: TokenStream = address
+                    let def_addr: TokenStream = address
                         .iter()
                         .skip(1)
-                        .chain(once(ty))
+                        .chain(once(def))
                         .map(|i| i.to_token_stream())
                         .intersperse(quote!(::))
                         .collect();
@@ -53,27 +62,69 @@ fn generate_module_recursive(
                         .intersperse(String::from("."))
                         .collect();
                     // Parse address
-                    let address = format!("{}.{}", str_base_addr, ty.to_string().to_snake_case());
+                    let address = format!("{}.{}", str_base_addr, def.to_string().to_snake_case());
+
+                    // Serializer func
+                    let serializer_func = if cfg!(feature = "ground") {
+                        if let Some(func) = optional_ground_func {
+                            quote!{
+                                impl SerializableTMValue<#def> for #tmty {
+                                    fn serialize_ground<T, S>(self, timestamp: T, serializer: &S) -> Result<Vec<(&'static str, Vec<u8>)>, S::Error>
+                                        where T: serde::Serialize + Clone + Copy,
+                                              S: Serializer
+                                    {
+                                        let nats_value = GroundTelemetry::new(timestamp, #func(&self));
+                                        let bytes = serializer.serialize_value(&nats_value)?;
+
+                                        let raw_nats_value = GroundTelemetry::new(timestamp, self);
+                                        let raw_bytes = serializer.serialize_value(&raw_nats_value)?;
+
+                                        Ok(vec![
+                                            (#address, bytes),
+                                            (&concat!("{}.raw", #address), raw_bytes)
+                                        ])
+                                    }
+                                }
+                            }
+                        }
+                        else {
+                            quote!{
+                                impl SerializableTMValue<#def> for #tmty {
+                                    fn serialize_ground<T, S>(self, timestamp: T, serializer: &S) -> Result<Vec<(&'static str, Vec<u8>)>, S::Error>
+                                        where T: serde::Serialize,
+                                              S: Serializer
+                                    {
+                                        let nats_value = GroundTelemetry::new(timestamp, self);
+                                        let bytes = serializer.serialize_value(&nats_value)?;
+                                        Ok(vec![(#address, bytes)])
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        quote!{}
+                    };
                     [
                         quote! {
-                            pub struct #ty;
-                            impl InternalTelemetryDefinition for #ty {
+                            pub struct #def;
+                            impl InternalTelemetryDefinition for #def {
                                 type TMValueType = #tmty;
                                 const ID: u16 = #tm_id;
                             }
-                            impl const TelemetryDefinition for #ty {
+                            impl const TelemetryDefinition for #def {
                                 fn id(&self) -> u16 { Self::ID }
                                 fn address(&self) -> &str { #address }
                             }
+                            #serializer_func
                         },
                         quote! {
-                            #tm_id => Ok(&#ty_addr),
+                            #tm_id => Ok(&#def_addr),
                         },
                         quote! {
-                            #address => Ok(&#ty_addr),
+                            #address => Ok(&#def_addr),
                         },
                         quote! {
-                            #ty::BYTE_SIZE,
+                            #def::BYTE_SIZE,
                         },
                     ]
                 }
@@ -191,7 +242,7 @@ pub fn impl_macro(ast: syn::Item, mut id: u16) -> TokenStream {
 
     quote! {
         pub mod #root_mod_ident {
-            use tmtc_system::{TelemetryDefinition, internal::InternalTelemetryDefinition, NotFoundError};
+            use tmtc_system::{TelemetryDefinition, _internal::*, NotFoundError};
             pub const fn from_id(id: u16) -> Result<&'static dyn TelemetryDefinition, NotFoundError> {
                 match id {
                     #id_getters

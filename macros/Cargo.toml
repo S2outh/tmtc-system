@@ -7,7 +7,7 @@ version = "0.1.0"
 edition = "2024"
 
 [features]
-serde = []
+ground = []
 
 [dependencies]
 heck = "0.5.0"

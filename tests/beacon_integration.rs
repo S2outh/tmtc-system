@@ -3,11 +3,13 @@
 use tmtc_system::*;
 
 #[derive(TMValue, Default, Clone, Copy)]
+#[cfg_attr(feature = "ground", derive(serde::Serialize))]
 pub struct TestValue {
     val: u32,
 }
 
 #[derive(TMValue, Default, Clone, Copy)]
+#[cfg_attr(feature = "ground", derive(serde::Serialize))]
 pub struct TestVector {
     x: i16,
     y: f32,
@@ -28,6 +30,9 @@ mod telemetry {
         struct ThirdTMValue;
     }
 }
+
+#[cfg(feature = "ground")]
+extern crate alloc;
 
 beacon!(
     TestBeacon,

@@ -1,0 +1,75 @@
+#![feature(const_trait_impl)]
+#![feature(const_cmp)]
+#![cfg(feature = "ground")]
+
+use tmtc_system::*;
+extern crate alloc;
+
+#[derive(TMValue, Default, Clone, Copy, serde::Serialize)]
+pub struct TestValue {
+    val: u32,
+}
+
+#[derive(TMValue, Default, Clone, Copy, serde::Serialize)]
+pub struct TestVector {
+    x: i16,
+    y: f32,
+    z: TestValue,
+}
+
+fn transfer(value: &u32) -> f32 {
+    (value * 3) as f32
+}
+
+#[telemetry_definition(id = 0)]
+mod telemetry {
+    #[tmv(i64)]
+    struct Timestamp;
+    #[tmv(u32, crate::transfer)]
+    struct FirstTMValue;
+    #[tmv(crate::TestValue)]
+    struct SecondTMValue;
+    #[tmm(id = 100)]
+    mod some_other_mod {
+        #[tmv(crate::TestVector)]
+        struct ThirdTMValue;
+    }
+}
+
+beacon!(
+    TestBeacon,
+    crate::telemetry,
+    crate::telemetry::Timestamp,
+    id = 0,
+    values(FirstTMValue, SecondTMValue, some_other_mod::ThirdTMValue)
+);
+
+struct CborSerializer;
+impl ground_tm::Serializer for CborSerializer {
+    type Error = serde_cbor::Error;
+    fn serialize_value<T: serde::Serialize>(
+        &self,
+        value: &T,
+    ) -> Result<std::vec::Vec<u8>, Self::Error> {
+        serde_cbor::to_vec(value)
+    }
+}
+
+#[test]
+fn tm_serialize() {
+    let mut beacon = test_beacon::TestBeacon::new();
+
+    let first_value = 1234u32;
+    let second_value = TestValue { val: 3 };
+    let third_value = TestVector {
+        x: 3,
+        y: 3.3,
+        z: TestValue { val: 1 },
+    };
+
+    beacon.first_tm_value = Some(first_value);
+    beacon.second_tm_value = Some(second_value);
+    beacon.some_other_mod_third_tm_value = Some(third_value);
+
+    beacon.serialize(&CborSerializer).unwrap();
+}

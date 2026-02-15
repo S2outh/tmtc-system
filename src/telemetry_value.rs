@@ -13,6 +13,43 @@ pub trait TMValue {
     fn write(&self, mem: &mut [u8]) -> Result<usize, TMValueError>;
 }
 
+#[cfg(feature = "ground")]
+pub mod ground_tm {
+    use crate::TelemetryDefinition;
+    use core::fmt::Debug;
+    // generic ground serializer function wrapper
+    pub trait Serializer {
+        type Error: Debug;
+        fn serialize_value<V: serde::Serialize>(
+            &self,
+            value: &V,
+        ) -> Result<alloc::vec::Vec<u8>, Self::Error>;
+    }
+    pub trait SerializableTMValue<DEF>: super::TMValue + serde::Serialize
+    where
+        DEF: TelemetryDefinition,
+    {
+        fn serialize_ground<T, S>(
+            self,
+            timestamp: T,
+            serializer: &S,
+        ) -> Result<alloc::vec::Vec<(&'static str, alloc::vec::Vec<u8>)>, S::Error>
+        where
+            T: serde::Serialize + Clone + Copy,
+            S: Serializer;
+    }
+    #[derive(serde::Serialize)]
+    pub struct GroundTelemetry<T: serde::Serialize, V: serde::Serialize> {
+        timestamp: T,
+        value: V,
+    }
+    impl<T: serde::Serialize, V: serde::Serialize> GroundTelemetry<T, V> {
+        pub fn new(timestamp: T, value: V) -> Self {
+            Self { timestamp, value }
+        }
+    }
+}
+
 // # Primitives
 macro_rules! primitive_value {
     ($type:ident) => {

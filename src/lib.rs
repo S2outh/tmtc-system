@@ -1,6 +1,9 @@
 #![no_std]
 #![feature(const_trait_impl)]
 
+#[cfg(feature = "ground")]
+extern crate alloc;
+
 mod bitfield;
 mod telemetry_container;
 mod telemetry_value;
@@ -22,27 +25,19 @@ pub const trait TelemetryDefinition {
     fn id(&self) -> u16;
     fn address(&self) -> &str;
 }
+
+#[cfg(feature = "ground")]
+pub use crate::telemetry_value::ground_tm;
 /// Reexports that should only be used by the macro generated code
-pub mod internal {
+pub mod _internal {
     use crate::TMValue;
     pub use crate::bitfield::Bitfield;
+    #[cfg(feature = "ground")]
+    pub use crate::ground_tm::*;
     pub const trait InternalTelemetryDefinition: crate::TelemetryDefinition {
         type TMValueType: crate::TMValue;
         const BYTE_SIZE: usize = Self::TMValueType::BYTE_SIZE;
         const ID: u16;
-    }
-
-    #[cfg_attr(feature = "serde", derive(serde::Serialize))]
-    #[cfg(feature = "serde")]
-    pub struct NatsTelemetry<T: serde::Serialize> {
-        timestamp: i64,
-        value: T,
-    }
-    #[cfg(feature = "serde")]
-    impl<T: serde::Serialize> NatsTelemetry<T> {
-        pub fn new(timestamp: i64, value: T) -> Self {
-            Self { timestamp, value }
-        }
     }
 }
 
@@ -79,15 +74,4 @@ pub trait Beacon {
     fn to_bytes(&mut self, crc_func: &mut dyn FnMut(&[u8]) -> u16) -> &[u8];
     fn set_timestamp(&mut self, timestamp: Self::Timestamp);
     fn flush(&mut self);
-}
-
-// stuff regarding serialization
-#[cfg(feature = "serde")]
-extern crate alloc;
-
-#[cfg(feature = "serde")]
-pub trait Serializer {
-    type Error;
-    fn serialize<T: serde::Serialize>(&self, value: &T)
-    -> Result<alloc::vec::Vec<u8>, Self::Error>;
 }

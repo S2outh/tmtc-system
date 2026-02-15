@@ -138,13 +138,13 @@ pub fn impl_macro(args: Punctuated<Meta, Token![,]>) -> TokenStream {
     let serializers = fields.iter().map(|(name, path)| {
         quote! {
             if let Some(value) = self.#name {
-                let nats_value = NatsTelemetry::new(timestamp, value);
-                let bytes = serializer.serialize(&nats_value)?;
-                serialized_values.push((#path.address(), bytes));
+                let mut serialized = <<#path as InternalTelemetryDefinition>::TMValueType as SerializableTMValue<#path>>
+                    ::serialize_ground(value, timestamp, serializer)?;
+                serialized_values.append(&mut serialized);
             }
         }
     });
-    let serializer_func = if cfg!(feature = "serde") {
+    let serializer_func = if cfg!(feature = "ground") {
         quote! {
             pub fn serialize<S: Serializer>(&self, serializer: &S) -> Result<Vec<(&'static str, Vec<u8>)>, S::Error> {
                 let mut serialized_values = Vec::new();
@@ -156,7 +156,7 @@ pub fn impl_macro(args: Punctuated<Meta, Token![,]>) -> TokenStream {
     } else {
         quote! {}
     };
-    let serializer_imports = if cfg!(feature = "serde") {
+    let serializer_imports = if cfg!(feature = "ground") {
         quote! {
             use alloc::vec::Vec;
         }
@@ -169,7 +169,7 @@ pub fn impl_macro(args: Punctuated<Meta, Token![,]>) -> TokenStream {
 
     quote! {
         pub mod #beacon_module_name {
-            use tmtc_system::{internal::*, *};
+            use tmtc_system::{_internal::*, *};
             #serializer_imports
             pub const BEACON_ID: u8 = #id;
             pub struct #beacon_name {
