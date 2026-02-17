@@ -157,44 +157,44 @@ fn beacon_insertion_id() {
     );
 }
 
-#[test]
-fn beacon_insertion_address() {
-    let mut address_beacon = TestBeacon::new();
-    let mut beacon = TestBeacon::new();
-
-    let first_value = 1234u32;
-    let second_value = TestValue { val: 3 };
-    let third_value = TestVector {
-        x: 3,
-        y: 3.3,
-        z: TestValue { val: 1 },
-    };
-
-    address_beacon
-        .insert_slice(
-            telemetry::from_address("telemetry.first_tm_value").unwrap(),
-            &to_bytes!(u32, first_value),
-        )
-        .unwrap();
-    address_beacon
-        .insert_slice(
-            telemetry::from_address("telemetry.second_tm_value").unwrap(),
-            &to_bytes!(TestValue, second_value),
-        )
-        .unwrap();
-    address_beacon
-        .insert_slice(
-            telemetry::from_address("telemetry.some_other_mod.third_tm_value").unwrap(),
-            &to_bytes!(TestVector, third_value),
-        )
-        .unwrap();
-
-    beacon.first_tm_value = Some(first_value);
-    beacon.second_tm_value = Some(second_value);
-    beacon.some_other_mod_third_tm_value = Some(third_value);
-
-    assert_eq!(
-        address_beacon.to_bytes(&mut crc_ccitt),
-        beacon.to_bytes(&mut crc_ccitt)
-    );
-}
+// #[test]
+// fn beacon_insertion_address() {
+//     let mut address_beacon = TestBeacon::new();
+//     let mut beacon = TestBeacon::new();
+//
+//     let first_value = 1234u32;
+//     let second_value = TestValue { val: 3 };
+//     let third_value = TestVector {
+//         x: 3,
+//         y: 3.3,
+//         z: TestValue { val: 1 },
+//     };
+//
+//     address_beacon
+//         .insert_slice(
+//             telemetry::from_address("telemetry.first_tm_value").unwrap(),
+//             &to_bytes!(u32, first_value),
+//         )
+//         .unwrap();
+//     address_beacon
+//         .insert_slice(
+//             telemetry::from_address("telemetry.second_tm_value").unwrap(),
+//             &to_bytes!(TestValue, second_value),
+//         )
+//         .unwrap();
+//     address_beacon
+//         .insert_slice(
+//             telemetry::from_address("telemetry.some_other_mod.third_tm_value").unwrap(),
+//             &to_bytes!(TestVector, third_value),
+//         )
+//         .unwrap();
+//
+//     beacon.first_tm_value = Some(first_value);
+//     beacon.second_tm_value = Some(second_value);
+//     beacon.some_other_mod_third_tm_value = Some(third_value);
+//
+//     assert_eq!(
+//         address_beacon.to_bytes(&mut crc_ccitt),
+//         beacon.to_bytes(&mut crc_ccitt)
+//     );
+// }

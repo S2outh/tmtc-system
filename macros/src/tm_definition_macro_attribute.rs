@@ -13,7 +13,7 @@ fn generate_module_recursive(
     address: Vec<syn::Ident>,
     id: &mut u16,
     items: &Vec<Item>,
-) -> [TokenStream; 4] {
+) -> [TokenStream; 3] {
     items
         .iter()
         .map(|v| {
@@ -38,8 +38,6 @@ fn generate_module_recursive(
                     let tmty = args_iter
                         .next()
                         .expect("missing type");
-                    let optional_ground_func = args_iter
-                        .next();
 
                     // this definitions name
                     let def = &v.ident;
@@ -66,38 +64,24 @@ fn generate_module_recursive(
 
                     // Serializer func
                     let serializer_func = if cfg!(feature = "ground") {
-                        if let Some(func) = optional_ground_func {
-                            quote!{
-                                impl SerializableTMValue<#def> for #tmty {
-                                    fn serialize_ground<T, S>(self, timestamp: T, serializer: &S) -> Result<Vec<(&'static str, Vec<u8>)>, S::Error>
-                                        where T: serde::Serialize + Clone + Copy,
-                                              S: Serializer
-                                    {
-                                        let nats_value = GroundTelemetry::new(timestamp, #func(&self));
+                        quote!{
+                            impl SerializableTMValue<#def> for #tmty {
+                                fn serialize_ground<T, S>(self, timestamp: T, serializer: &S) -> Result<Vec<(&'static str, Vec<u8>)>, S::Error>
+                                    where T: serde::Serialize + Clone + Copy,
+                                          S: Serializer
+                                {
+                                    let mut serialized_pairs = Vec::new();
+                                    #({
+                                        let nats_value = GroundTelemetry::new(timestamp, #args_iter(&self));
                                         let bytes = serializer.serialize_value(&nats_value)?;
+                                        serialized_pairs.push((concat!(#address, ".c"), bytes));
+                                    })*
 
-                                        let raw_nats_value = GroundTelemetry::new(timestamp, self);
-                                        let raw_bytes = serializer.serialize_value(&raw_nats_value)?;
+                                    let raw_nats_value = GroundTelemetry::new(timestamp, self);
+                                    let raw_bytes = serializer.serialize_value(&raw_nats_value)?;
+                                    serialized_pairs.push((#address, raw_bytes));
 
-                                        Ok(vec![
-                                            (#address, bytes),
-                                            (&concat!("{}.raw", #address), raw_bytes)
-                                        ])
-                                    }
-                                }
-                            }
-                        }
-                        else {
-                            quote!{
-                                impl SerializableTMValue<#def> for #tmty {
-                                    fn serialize_ground<T, S>(self, timestamp: T, serializer: &S) -> Result<Vec<(&'static str, Vec<u8>)>, S::Error>
-                                        where T: serde::Serialize,
-                                              S: Serializer
-                                    {
-                                        let nats_value = GroundTelemetry::new(timestamp, self);
-                                        let bytes = serializer.serialize_value(&nats_value)?;
-                                        Ok(vec![(#address, bytes)])
-                                    }
+                                    Ok(serialized_pairs)
                                 }
                             }
                         }
@@ -120,9 +104,9 @@ fn generate_module_recursive(
                         quote! {
                             #tm_id => Ok(&#def_addr),
                         },
-                        quote! {
-                            #address => Ok(&#def_addr),
-                        },
+                        // quote! {
+                        //     #address => Ok(&#def_addr),
+                        // },
                         quote! {
                             #def::BYTE_SIZE,
                         },
@@ -174,7 +158,7 @@ fn generate_module_recursive(
                     let module_name = v.ident.clone();
                     let mut address = address.clone();
                     address.push(module_name.clone());
-                    let [module_content, id_getters, address_getters, byte_lengths] =
+                    let [module_content, id_getters, /*address_getters,*/ byte_lengths] =
                         generate_module_recursive(
                             address,
                             id,
@@ -204,7 +188,7 @@ fn generate_module_recursive(
                             }
                         },
                         id_getters,
-                        address_getters,
+                        //address_getters,
                         quote! {
                             #module_name::MAX_BYTE_SIZE,
                         },
@@ -237,8 +221,11 @@ pub fn impl_macro(ast: syn::Item, mut id: u16) -> TokenStream {
     let start_id = id;
     let id_ref = &mut id;
 
-    let [module_content, id_getters, address_getters, byte_lengths] =
-        generate_module_recursive(vec![root_mod_ident.clone()], id_ref, &root_mod_content.1);
+    let [
+        module_content,
+        id_getters,
+        /*address_getters, */ byte_lengths,
+    ] = generate_module_recursive(vec![root_mod_ident.clone()], id_ref, &root_mod_content.1);
 
     quote! {
         pub mod #root_mod_ident {
@@ -249,12 +236,12 @@ pub fn impl_macro(ast: syn::Item, mut id: u16) -> TokenStream {
                     _ => Err(NotFoundError)
                 }
             }
-            pub const fn from_address(address: &str) -> Result<&'static dyn TelemetryDefinition, NotFoundError> {
-                match address {
-                    #address_getters
-                    _ => Err(NotFoundError)
-                }
-            }
+            // pub const fn from_address(address: &str) -> Result<&'static dyn TelemetryDefinition, NotFoundError> {
+            //     match address {
+            //         #address_getters
+            //         _ => Err(NotFoundError)
+            //     }
+            // }
             pub const fn id_range() -> (u16, u16) {
                 (#start_id, #id_ref)
             }

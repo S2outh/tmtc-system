@@ -55,7 +55,7 @@ pub fn impl_macro(args: Punctuated<Meta, Token![,]>) -> TokenStream {
         .into_iter()
         .collect();
 
-    let fields: Vec<_> = tm_definitions
+    let (names, paths): (Vec<_>, Vec<_>) = tm_definitions
         .iter()
         .map(|p| {
             (
@@ -69,46 +69,14 @@ pub fn impl_macro(args: Punctuated<Meta, Token![,]>) -> TokenStream {
                 quote! { #root_path::#p },
             )
         })
-        .collect();
+        .unzip();
 
-    let itd_fields: Vec<_> = fields
+    let itd_paths: Vec<_> = paths
         .iter()
-        .map(|(name, path)| (name, quote! { <#path as InternalTelemetryDefinition> }))
+        .map(|path| quote! { <#path as InternalTelemetryDefinition> })
         .collect();
 
-    let types: Vec<_> = itd_fields
-        .iter()
-        .map(|(_, path)| quote! { #path::TMValueType})
-        .collect();
-
-    let field_defs: Vec<_> = itd_fields
-        .iter()
-        .map(|(name, path)| {
-            quote! {
-                pub #name: Option<#path::TMValueType>
-            }
-        })
-        .collect();
-
-    let field_defaults: Vec<_> = itd_fields
-        .iter()
-        .map(|(name, _)| {
-            quote! {
-                #name: None
-            }
-        })
-        .collect();
-
-    let field_set_defaults: Vec<_> = itd_fields
-        .iter()
-        .map(|(name, _)| {
-            quote! {
-                self.#name = None;
-            }
-        })
-        .collect();
-
-    let type_parsers = itd_fields.iter().enumerate().map(|(i, (name, path))| {
+    let type_parsers = names.iter().zip(itd_paths.clone()).enumerate().map(|(i, (name, path))| {
         quote! {
             if bitfield.get(#i) {
                 let (len, value) = #path::TMValueType::read(&bytes[pos..]).map_err(|_| ParseError::OutOfMemory)?;
@@ -119,7 +87,7 @@ pub fn impl_macro(args: Punctuated<Meta, Token![,]>) -> TokenStream {
             }
         }
     });
-    let byte_parsers = itd_fields.iter().enumerate().map(|(i, (name, _))| {
+    let byte_parsers = names.iter().enumerate().map(|(i, name)| {
         quote! {
             if let Some(value) = self.#name {
                 pos += value.write(&mut self.storage[pos..]).unwrap();
@@ -127,7 +95,7 @@ pub fn impl_macro(args: Punctuated<Meta, Token![,]>) -> TokenStream {
             }
         }
     });
-    let type_setters = itd_fields.iter().map(|(name, path)| {
+    let type_setters = names.iter().zip(itd_paths.clone()).map(|(name, path)| {
         quote! {
            #path::ID => {
                let (_, value) = #path::TMValueType::read(bytes).map_err(|_| BeaconOperationError::OutOfMemory)?;
@@ -135,7 +103,7 @@ pub fn impl_macro(args: Punctuated<Meta, Token![,]>) -> TokenStream {
            }
         }
     });
-    let serializers = fields.iter().map(|(name, path)| {
+    let serializers = names.iter().zip(paths).map(|(name, path)| {
         quote! {
             if let Some(value) = self.#name {
                 let mut serialized = <<#path as InternalTelemetryDefinition>::TMValueType as SerializableTMValue<#path>>
@@ -164,7 +132,7 @@ pub fn impl_macro(args: Punctuated<Meta, Token![,]>) -> TokenStream {
         quote! {}
     };
 
-    let bitfield_size: usize = (fields.len() as f32 / 8.).ceil() as usize;
+    let bitfield_size: usize = (names.len() as f32 / 8.).ceil() as usize;
     let header_size: usize = 1 + 2 + bitfield_size; // id + crc + bitfield
 
     quote! {
@@ -175,18 +143,18 @@ pub fn impl_macro(args: Punctuated<Meta, Token![,]>) -> TokenStream {
             pub struct #beacon_name {
                 storage: [u8; Self::BYTE_SIZE],
                 pub timestamp: #timestamp_type,
-                #(#field_defs),*
+                #(pub #names: Option<#itd_paths::TMValueType>),*
             }
             impl #beacon_name {
                 pub const BYTE_SIZE: usize = #header_size
                     + <#timestamp_type as TMValue>::BYTE_SIZE
-                    + #(<#types as TMValue>::BYTE_SIZE)+*;
+                    + #(<#itd_paths::TMValueType as TMValue>::BYTE_SIZE)+*;
 
                 pub fn new() -> Self {
                     Self {
                         storage: [0u8; Self::BYTE_SIZE],
                         timestamp: #timestamp_type::default(),
-                        #(#field_defaults),*
+                        #(#names: None),*
                     }
                 }
                 #serializer_func
@@ -246,7 +214,7 @@ pub fn impl_macro(args: Punctuated<Meta, Token![,]>) -> TokenStream {
                     Ok(())
                 }
                 fn flush(&mut self) {
-                    #(#field_set_defaults)*
+                    #(self.#names = None;)*
                 }
             }
         }

@@ -66,10 +66,19 @@ fn tm_serialize() {
         y: 3.3,
         z: TestValue { val: 1 },
     };
+    let addresses = vec![
+        "telemetry.first_tm_value.c",
+        "telemetry.first_tm_value",
+        "telemetry.second_tm_value",
+        "telemetry.some_other_mod.third_tm_value",
+    ];
 
     beacon.first_tm_value = Some(first_value);
     beacon.second_tm_value = Some(second_value);
     beacon.some_other_mod_third_tm_value = Some(third_value);
 
-    beacon.serialize(&CborSerializer).unwrap();
+    let serialized_pairs = beacon.serialize(&CborSerializer).unwrap();
+    for (ser, address) in serialized_pairs.iter().zip(addresses) {
+        assert_eq!(ser.0, address);
+    }
 }
