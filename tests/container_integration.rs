@@ -2,6 +2,9 @@
 #![feature(const_cmp)]
 use tmtc_system::*;
 
+#[cfg(feature = "ground")]
+extern crate alloc;
+
 #[derive(TMValue, Default, Clone, Copy)]
 #[cfg_attr(feature = "ground", derive(serde::Serialize))]
 pub struct TestValue {

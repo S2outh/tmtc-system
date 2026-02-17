@@ -97,11 +97,12 @@ fn generate_module_recursive(
                     let serializer_func = if cfg!(feature = "ground") {
                         quote!{
                             impl SerializableTMValue<#def> for #tmty {
-                                fn serialize_ground<T, S>(self, _def: &#def, timestamp: T, serializer: &S) -> Result<Vec<(&'static str, Vec<u8>)>, S::Error>
+                                fn serialize_ground<T, S>(self, _def: &#def, timestamp: T, serializer: &S)
+                                    -> Result<alloc::vec::Vec<(&'static str, alloc::vec::Vec<u8>)>, S::Error>
                                     where T: serde::Serialize + Clone + Copy,
                                           S: Serializer
                                 {
-                                    let mut serialized_pairs = Vec::new();
+                                    let mut serialized_pairs = alloc::vec::Vec::new();
                                     #({
                                         let nats_value = GroundTelemetry::new(timestamp, (#funcs)(&self));
                                         let bytes = serializer.serialize_value(&nats_value)?;

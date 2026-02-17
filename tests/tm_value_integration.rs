@@ -1,6 +1,9 @@
 #![feature(const_trait_impl)]
 use tmtc_system::*;
 
+#[cfg(feature = "ground")]
+extern crate alloc;
+
 #[derive(TMValue, Default, PartialEq, Debug, Clone, Copy)]
 pub struct TestValue {
     val: Option<u32>,
