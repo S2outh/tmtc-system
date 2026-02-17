@@ -21,7 +21,7 @@ fn transfer(value: &u32) -> f32 {
     (value * 3) as f32
 }
 
-#[telemetry_definition(id = 0)]
+#[telemetry_definition(id = 0, address = tmtc_system)]
 mod telemetry {
     #[tmv(i64)]
     struct Timestamp;

@@ -241,7 +241,7 @@ fn generate_module_recursive(
         })
 }
 
-pub fn impl_macro(ast: syn::Item, mut id: u16) -> TokenStream {
+pub fn impl_macro(ast: syn::Item, mut id: u16, tmtc_system_address: syn::Path) -> TokenStream {
     let syn::Item::Mod(telem_defnition) = ast else {
         panic!("telemetry defintion is not a module");
     };
@@ -258,7 +258,7 @@ pub fn impl_macro(ast: syn::Item, mut id: u16) -> TokenStream {
 
     quote! {
         pub mod #root_mod_ident {
-            use tmtc_system::{TelemetryDefinition, _internal::*, NotFoundError};
+            use #tmtc_system_address::{TelemetryDefinition, _internal::*, NotFoundError};
             pub const fn from_id(id: u16) -> Result<&'static dyn TelemetryDefinition, NotFoundError> {
                 match id {
                     #id_getters
