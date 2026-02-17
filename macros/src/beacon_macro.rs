@@ -76,33 +76,8 @@ pub fn impl_macro(args: Punctuated<Meta, Token![,]>) -> TokenStream {
         .map(|path| quote! { <#path as InternalTelemetryDefinition> })
         .collect();
 
-    let type_parsers = names.iter().zip(itd_paths.clone()).enumerate().map(|(i, (name, path))| {
-        quote! {
-            if bitfield.get(#i) {
-                let (len, value) = #path::TMValueType::read(&bytes[pos..]).map_err(|_| ParseError::OutOfMemory)?;
-                pos += len;
-                self.#name = Some(value);
-            } else {
-                self.#name = None;
-            }
-        }
-    });
-    let byte_parsers = names.iter().enumerate().map(|(i, name)| {
-        quote! {
-            if let Some(value) = self.#name {
-                pos += value.write(&mut self.storage[pos..]).unwrap();
-                bitfield.set(#i);
-            }
-        }
-    });
-    let type_setters = names.iter().zip(itd_paths.clone()).map(|(name, path)| {
-        quote! {
-           #path::ID => {
-               let (_, value) = #path::TMValueType::read(bytes).map_err(|_| BeaconOperationError::OutOfMemory)?;
-               self.#name = Some(value);
-           }
-        }
-    });
+    let i: Vec<_> = (0..names.len()).collect();
+
     let serializers = names.iter().zip(paths).map(|(name, path)| {
         quote! {
             if let Some(value) = self.#name {
@@ -183,7 +158,15 @@ pub fn impl_macro(args: Punctuated<Meta, Token![,]>) -> TokenStream {
                     pos += len;
                     self.timestamp = timestamp_value;
                     // Parsers
-                    #(#type_parsers)*
+                    #(
+                        if bitfield.get(#i) {
+                            let (len, value) = #itd_paths::TMValueType::read(&bytes[pos..]).map_err(|_| ParseError::OutOfMemory)?;
+                            pos += len;
+                            self.#names = Some(value);
+                        } else {
+                            self.#names = None;
+                        }
+                    )*
                     Ok(())
                 }
                 fn to_bytes(&mut self, crc_func: &mut dyn FnMut(&[u8]) -> u16) -> &[u8] {
@@ -195,7 +178,13 @@ pub fn impl_macro(args: Punctuated<Meta, Token![,]>) -> TokenStream {
                     // Timestamp
                     pos += self.timestamp.write(&mut self.storage[pos..]).unwrap();
                     // Parsers
-                    #(#byte_parsers)*
+                    #(
+                        if let Some(value) = self.#names {
+                            pos += value.write(&mut self.storage[pos..]).unwrap();
+                            bitfield.set(#i);
+                        }
+                    )*
+
                     // Store Bitfield
                     self.storage[3..#header_size].copy_from_slice(bitfield.bytes());
                     // Crc
@@ -208,7 +197,12 @@ pub fn impl_macro(args: Punctuated<Meta, Token![,]>) -> TokenStream {
                 }
                 fn insert_slice(&mut self, telemetry_definition: &dyn TelemetryDefinition, bytes: &[u8]) -> Result<(), BeaconOperationError> {
                     match telemetry_definition.id() {
-                        #(#type_setters)*
+                        #(
+                            #itd_paths::ID => {
+                                let (_, value) = #itd_paths::TMValueType::read(bytes).map_err(|_| BeaconOperationError::OutOfMemory)?;
+                                self.#names = Some(value);
+                            },
+                        )*
                         _ => return Err(BeaconOperationError::DefNotInBeacon),
                     };
                     Ok(())
