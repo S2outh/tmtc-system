@@ -13,7 +13,7 @@ fn generate_module_recursive(
     address: Vec<syn::Ident>,
     id: &mut u16,
     items: &Vec<Item>,
-) -> [TokenStream; 3] {
+) -> [TokenStream; 4] {
     items
         .iter()
         .map(|v| {
@@ -104,9 +104,9 @@ fn generate_module_recursive(
                         quote! {
                             #tm_id => Ok(&#def_addr),
                         },
-                        // quote! {
-                        //     #address => Ok(&#def_addr),
-                        // },
+                        quote! {
+                            #address => Ok(&#def_addr),
+                        },
                         quote! {
                             #def::BYTE_SIZE,
                         },
@@ -158,7 +158,7 @@ fn generate_module_recursive(
                     let module_name = v.ident.clone();
                     let mut address = address.clone();
                     address.push(module_name.clone());
-                    let [module_content, id_getters, /*address_getters,*/ byte_lengths] =
+                    let [module_content, id_getters, address_getters, byte_lengths] =
                         generate_module_recursive(
                             address,
                             id,
@@ -188,7 +188,7 @@ fn generate_module_recursive(
                             }
                         },
                         id_getters,
-                        //address_getters,
+                        address_getters,
                         quote! {
                             #module_name::MAX_BYTE_SIZE,
                         },
@@ -221,11 +221,8 @@ pub fn impl_macro(ast: syn::Item, mut id: u16) -> TokenStream {
     let start_id = id;
     let id_ref = &mut id;
 
-    let [
-        module_content,
-        id_getters,
-        /*address_getters, */ byte_lengths,
-    ] = generate_module_recursive(vec![root_mod_ident.clone()], id_ref, &root_mod_content.1);
+    let [module_content, id_getters, address_getters, byte_lengths] =
+        generate_module_recursive(vec![root_mod_ident.clone()], id_ref, &root_mod_content.1);
 
     quote! {
         pub mod #root_mod_ident {
@@ -236,12 +233,12 @@ pub fn impl_macro(ast: syn::Item, mut id: u16) -> TokenStream {
                     _ => Err(NotFoundError)
                 }
             }
-            // pub const fn from_address(address: &str) -> Result<&'static dyn TelemetryDefinition, NotFoundError> {
-            //     match address {
-            //         #address_getters
-            //         _ => Err(NotFoundError)
-            //     }
-            // }
+            pub const fn from_address(address: &str) -> Result<&'static dyn TelemetryDefinition, NotFoundError> {
+                match address {
+                    #address_getters
+                    _ => Err(NotFoundError)
+                }
+            }
             pub const fn id_range() -> (u16, u16) {
                 (#start_id, #id_ref)
             }

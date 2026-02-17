@@ -111,7 +111,8 @@ pub fn impl_macro(args: Punctuated<Meta, Token![,]>) -> TokenStream {
     let header_size: usize = 1 + 2 + bitfield_size; // id + crc + bitfield
 
     quote! {
-        pub mod #beacon_module_name {
+        pub use #beacon_module_name::#beacon_name;
+        mod #beacon_module_name {
             use tmtc_system::{_internal::*, *};
             #serializer_imports
             pub const BEACON_ID: u8 = #id;
