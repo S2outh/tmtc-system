@@ -7,7 +7,7 @@ extern crate alloc;
 
 #[derive(TMValue, Default, Clone, Copy, serde::Serialize)]
 pub struct TestValue {
-    val: u32,
+    pub val: u32,
 }
 
 #[derive(TMValue, Default, Clone, Copy, serde::Serialize)]
@@ -25,9 +25,9 @@ fn transfer(value: &u32) -> f32 {
 mod telemetry {
     #[tmv(i64)]
     struct Timestamp;
-    #[tmv(u32, crate::transfer)]
+    #[tmv(u32, c = crate::transfer)]
     struct FirstTMValue;
-    #[tmv(crate::TestValue)]
+    #[tmv(crate::TestValue, other = |v: &crate::TestValue| v.val)]
     struct SecondTMValue;
     #[tmm(id = 100)]
     mod some_other_mod {
@@ -69,6 +69,7 @@ fn tm_serialize() {
     let addresses = vec![
         "telemetry.first_tm_value.c",
         "telemetry.first_tm_value",
+        "telemetry.second_tm_value.other",
         "telemetry.second_tm_value",
         "telemetry.some_other_mod.third_tm_value",
     ];

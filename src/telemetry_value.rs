@@ -31,6 +31,7 @@ pub mod ground_tm {
     {
         fn serialize_ground<T, S>(
             self,
+            _def: &DEF,
             timestamp: T,
             serializer: &S,
         ) -> Result<alloc::vec::Vec<(&'static str, alloc::vec::Vec<u8>)>, S::Error>

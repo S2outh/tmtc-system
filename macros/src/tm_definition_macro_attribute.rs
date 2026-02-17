@@ -4,10 +4,40 @@ use std::iter::{once, zip};
 use heck::ToSnakeCase;
 use proc_macro2::TokenStream;
 use quote::{ToTokens, quote};
+use syn::parse::{Parse, ParseStream};
 use syn::{Item, Meta, Token, punctuated::Punctuated};
+use syn::{MetaNameValue, Type};
 
 const TM_VALUE_MACRO_NAME: &str = "tmv";
 const TM_MODULE_MACRO_NAME: &str = "tmm";
+
+struct TmValueMacroInput {
+    pub ty: Type,
+    pub metas: Punctuated<MetaNameValue, Token![,]>,
+}
+
+impl Parse for TmValueMacroInput {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        // Parse first argument as a Type
+        let ty: Type = input.parse()?;
+
+        // If there's nothing else, return early
+        if input.is_empty() {
+            return Ok(Self {
+                ty,
+                metas: Punctuated::new(),
+            });
+        }
+
+        // Expect comma after type
+        input.parse::<Token![,]>()?;
+
+        // Parse remaining key-value pairs
+        let metas = Punctuated::<MetaNameValue, Token![,]>::parse_terminated(input)?;
+
+        Ok(Self { ty, metas })
+    }
+}
 
 fn generate_module_recursive(
     address: Vec<syn::Ident>,
@@ -20,7 +50,7 @@ fn generate_module_recursive(
             match v {
                 syn::Item::Struct(v) => {
                     // Parse "tmv" attribute
-                    let args = v
+                    let args: TmValueMacroInput = v
                         .attrs
                         .iter()
                         .find(|attr| attr.path().is_ident(TM_VALUE_MACRO_NAME))
@@ -28,16 +58,17 @@ fn generate_module_recursive(
                             "Struct {} has no {} attribute",
                             &v.ident, TM_VALUE_MACRO_NAME
                         ))
-                        .parse_args_with(Punctuated::<syn::Type, Token![,]>::parse_separated_nonempty)
+                        .parse_args()
                         .expect(&format!(
                             "Could not parse {} attribute parameters",
                             TM_VALUE_MACRO_NAME
                         ));
-                    let mut args_iter = args
-                        .into_iter();
-                    let tmty = args_iter
-                        .next()
-                        .expect("missing type");
+
+                    let tmty: Type = args.ty;
+
+                    let (address_endings, funcs): (Vec<_>, Vec<_>) = args.metas
+                        .into_iter()
+                        .map(|v| (v.path, v.value)).unzip();
 
                     // this definitions name
                     let def = &v.ident;
@@ -66,15 +97,15 @@ fn generate_module_recursive(
                     let serializer_func = if cfg!(feature = "ground") {
                         quote!{
                             impl SerializableTMValue<#def> for #tmty {
-                                fn serialize_ground<T, S>(self, timestamp: T, serializer: &S) -> Result<Vec<(&'static str, Vec<u8>)>, S::Error>
+                                fn serialize_ground<T, S>(self, _def: &#def, timestamp: T, serializer: &S) -> Result<Vec<(&'static str, Vec<u8>)>, S::Error>
                                     where T: serde::Serialize + Clone + Copy,
                                           S: Serializer
                                 {
                                     let mut serialized_pairs = Vec::new();
                                     #({
-                                        let nats_value = GroundTelemetry::new(timestamp, #args_iter(&self));
+                                        let nats_value = GroundTelemetry::new(timestamp, (#funcs)(&self));
                                         let bytes = serializer.serialize_value(&nats_value)?;
-                                        serialized_pairs.push((concat!(#address, ".c"), bytes));
+                                        serialized_pairs.push((concat!(#address, ".", stringify!(#address_endings)), bytes));
                                     })*
 
                                     let raw_nats_value = GroundTelemetry::new(timestamp, self);
