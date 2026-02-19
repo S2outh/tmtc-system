@@ -74,4 +74,6 @@ pub trait Beacon {
     fn to_bytes(&mut self, crc_func: &mut dyn FnMut(&[u8]) -> u16) -> &[u8];
     fn set_timestamp(&mut self, timestamp: Self::Timestamp);
     fn flush(&mut self);
+    fn name(&self) -> &'static str;
+    fn id(&self) -> u8;
 }

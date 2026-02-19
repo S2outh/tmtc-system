@@ -210,6 +210,12 @@ pub fn impl_macro(args: Punctuated<Meta, Token![,]>) -> TokenStream {
                 fn flush(&mut self) {
                     #(self.#names = None;)*
                 }
+                fn name(&self) -> &'static str {
+                    stringify!(#beacon_name)
+                }
+                fn id(&self) -> u8 {
+                    BEACON_ID
+                }
             }
         }
     }
