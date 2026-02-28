@@ -92,6 +92,8 @@ fn generate_module_recursive(
                         .collect();
                     // Parse address
                     let address = format!("{}.{}", str_base_addr, def.to_string().to_snake_case());
+                    // generated documentation
+                    let doc = format!("{}: telemetry address: {}, can id: {}", def.to_string(), address, tm_id);
 
                     // Serializer func
                     let serializer_func = if cfg!(feature = "ground") {
@@ -122,6 +124,7 @@ fn generate_module_recursive(
                     };
                     [
                         quote! {
+                            #[doc = #doc]
                             pub struct #def;
                             impl InternalTelemetryDefinition for #def {
                                 type TMValueType = #tmty;
