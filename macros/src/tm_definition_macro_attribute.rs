@@ -39,209 +39,211 @@ impl Parse for TmValueMacroInput {
     }
 }
 
-fn generate_module_recursive(
-    address: Vec<syn::Ident>,
+fn generate_struct(
+    address: &Vec<syn::Ident>,
     id: &mut u16,
-    items: &Vec<Item>,
+    v: &syn::ItemStruct,
 ) -> [TokenStream; 4] {
+    // Parse "tmv" attribute
+    let args: TmValueMacroInput = v
+        .attrs
+        .iter()
+        .find(|attr| attr.path().is_ident(TM_VALUE_MACRO_NAME))
+        .expect(&format!(
+            "Struct {} has no {} attribute",
+            &v.ident, TM_VALUE_MACRO_NAME
+        ))
+        .parse_args()
+        .expect(&format!(
+            "Could not parse {} attribute parameters",
+            TM_VALUE_MACRO_NAME
+        ));
+
+    let tmty: Type = args.ty;
+
+    let (address_endings, funcs): (Vec<_>, Vec<_>) =
+        args.metas.into_iter().map(|v| (v.path, v.value)).unzip();
+
+    // this definitions name
+    let def = &v.ident;
+    // Parse rust address of the struct inside the telemetry module tree
+    let def_addr: TokenStream = address
+        .iter()
+        .skip(1)
+        .chain(once(def))
+        .map(|i| i.to_token_stream())
+        .intersperse(quote!(::))
+        .collect();
+    // Parse type of the TMValue the struct references
+    // Increment id
+    let tm_id = *id;
+    *id += 1;
+    // calculate string address based on module tree
+    let str_base_addr: String = address
+        .iter()
+        .map(|i| i.to_string())
+        .intersperse(String::from("."))
+        .collect();
+    // Parse address
+    let address = format!("{}.{}", str_base_addr, def.to_string().to_snake_case());
+    // generated documentation
+    let mut calibrated = String::new();
+    for (i, addr) in address_endings.iter().enumerate() {
+        let doc = format!("{}, {} \n", i, &addr.to_token_stream().to_string());
+        calibrated.push_str(&doc);
+    }
+    let doc = format!(
+        "# {}:\ntelemetry address: {},\ncan id: {},\ncalibrated address endings:\n{}",
+        def.to_string(),
+        address,
+        tm_id,
+        &calibrated
+    );
+
+    // Serializer func
+    let serializer_func = if cfg!(feature = "ground") {
+        quote! {
+            impl SerializableTMValue<#def> for #tmty {
+                fn serialize_ground<T, S>(self, _def: &#def, timestamp: T, serializer: &S)
+                    -> Result<alloc::vec::Vec<(&'static str, alloc::vec::Vec<u8>)>, S::Error>
+                    where T: serde::Serialize + Clone + Copy,
+                          S: Serializer
+                {
+                    let mut serialized_pairs = alloc::vec::Vec::new();
+                    #({
+                        let nats_value = GroundTelemetry::new(timestamp, (#funcs)(&self));
+                        let bytes = serializer.serialize_value(&nats_value)?;
+                        serialized_pairs.push((concat!(#address, ".", stringify!(#address_endings)), bytes));
+                    })*
+
+                    let raw_nats_value = GroundTelemetry::new(timestamp, self);
+                    let raw_bytes = serializer.serialize_value(&raw_nats_value)?;
+                    serialized_pairs.push((#address, raw_bytes));
+
+                    Ok(serialized_pairs)
+                }
+            }
+        }
+    } else {
+        quote! {}
+    };
+    [
+        quote! {
+            #[doc = #doc]
+            pub struct #def;
+            impl InternalTelemetryDefinition for #def {
+                type TMValueType = #tmty;
+                const ID: u16 = #tm_id;
+            }
+            impl const TelemetryDefinition for #def {
+                fn id(&self) -> u16 { Self::ID }
+                fn address(&self) -> &str { #address }
+            }
+            #serializer_func
+        },
+        quote! {
+            #tm_id => Ok(&#def_addr),
+        },
+        quote! {
+            #address => Ok(&#def_addr),
+        },
+        quote! {
+            #def::BYTE_SIZE,
+        },
+    ]
+}
+
+fn generate_module_recursive(
+    address: &Vec<syn::Ident>,
+    id: &mut u16,
+    v: &syn::ItemMod,
+) -> [TokenStream; 4] {
+    // Parse "tmm" attribute
+    if let Some(module_id) = v
+        .attrs
+        .iter()
+        .find(|attr| attr.path().is_ident(TM_MODULE_MACRO_NAME))
+        .map(|v| {
+            v.parse_args_with(Punctuated::<Meta, Token![,]>::parse_separated_nonempty)
+                .expect(&format!(
+                    "Could not parse {} attribute parameters",
+                    TM_MODULE_MACRO_NAME
+                ))
+                .iter()
+                .filter_map(|m| m.require_name_value().ok())
+                .filter(|m| m.path.get_ident().filter(|p| *p == "id").is_some())
+                .map(|m| {
+                    if let syn::Expr::Lit(value) = &m.value {
+                        value
+                    } else {
+                        panic!("unexpected attribute value type")
+                    }
+                })
+                .map(|m| {
+                    if let syn::Lit::Int(value) = &m.lit {
+                        value
+                    } else {
+                        panic!("unexpected attribute value type")
+                    }
+                })
+                .next()
+                .map(|lit| lit.base10_parse().unwrap())
+        })
+        .flatten()
+    {
+        if *id > module_id {
+            panic!("like schedules, ids should only move in one direction");
+        }
+        *id = module_id;
+    }
+    let start_id = *id;
+
+    let module_name = v.ident.clone();
+    let mut address = address.clone();
+    address.push(module_name.clone());
+    let [module_content, id_getters, address_getters, byte_lengths] = generate_tree(
+        address,
+        id,
+        &v.content.as_ref().expect("module sould not be empty").1,
+    );
+
+    [
+        quote! {
+            pub mod #module_name {
+                use super::*;
+                pub const fn id_range() -> (u16, u16) {
+                    (#start_id, #id)
+                }
+                pub const MAX_BYTE_SIZE: usize = {
+                    let SIZES = [#byte_lengths];
+                    let mut max = 0;
+                    let mut i = 0;
+                    while i < SIZES.len() {
+                        if SIZES[i] > max {
+                            max = SIZES[i];
+                        }
+                        i += 1;
+                    }
+                    max
+                };
+                #module_content
+            }
+        },
+        id_getters,
+        address_getters,
+        quote! {
+            #module_name::MAX_BYTE_SIZE,
+        },
+    ]
+}
+
+fn generate_tree(address: Vec<syn::Ident>, id: &mut u16, items: &Vec<Item>) -> [TokenStream; 4] {
     items
         .iter()
-        .map(|v| {
-            match v {
-                syn::Item::Struct(v) => {
-                    // Parse "tmv" attribute
-                    let args: TmValueMacroInput = v
-                        .attrs
-                        .iter()
-                        .find(|attr| attr.path().is_ident(TM_VALUE_MACRO_NAME))
-                        .expect(&format!(
-                            "Struct {} has no {} attribute",
-                            &v.ident, TM_VALUE_MACRO_NAME
-                        ))
-                        .parse_args()
-                        .expect(&format!(
-                            "Could not parse {} attribute parameters",
-                            TM_VALUE_MACRO_NAME
-                        ));
-
-                    let tmty: Type = args.ty;
-
-                    let (address_endings, funcs): (Vec<_>, Vec<_>) = args.metas
-                        .into_iter()
-                        .map(|v| (v.path, v.value)).unzip();
-
-                    // this definitions name
-                    let def = &v.ident;
-                    // Parse rust address of the struct inside the telemetry module tree
-                    let def_addr: TokenStream = address
-                        .iter()
-                        .skip(1)
-                        .chain(once(def))
-                        .map(|i| i.to_token_stream())
-                        .intersperse(quote!(::))
-                        .collect();
-                    // Parse type of the TMValue the struct references
-                    // Increment id
-                    let tm_id = *id;
-                    *id += 1;
-                    // calculate string address based on module tree
-                    let str_base_addr: String = address
-                        .iter()
-                        .map(|i| i.to_string())
-                        .intersperse(String::from("."))
-                        .collect();
-                    // Parse address
-                    let address = format!("{}.{}", str_base_addr, def.to_string().to_snake_case());
-                    // generated documentation
-                    let mut calibrated = String::new();
-                    for (i, addr) in address_endings.iter().enumerate() {
-                        let doc = format!("{}, {} \n", i, &addr.to_token_stream().to_string());
-                        calibrated.push_str(&doc);
-                    }
-                    let doc = format!("# {}: \n
-                        *telemetry address:* {}, \n
-                        *can id:* {}, \n
-                        *calibrated address endings:* \n
-                        {}",
-                        def.to_string(), address, tm_id, &calibrated
-                    );
-
-                    // Serializer func
-                    let serializer_func = if cfg!(feature = "ground") {
-                        quote!{
-                            impl SerializableTMValue<#def> for #tmty {
-                                fn serialize_ground<T, S>(self, _def: &#def, timestamp: T, serializer: &S)
-                                    -> Result<alloc::vec::Vec<(&'static str, alloc::vec::Vec<u8>)>, S::Error>
-                                    where T: serde::Serialize + Clone + Copy,
-                                          S: Serializer
-                                {
-                                    let mut serialized_pairs = alloc::vec::Vec::new();
-                                    #({
-                                        let nats_value = GroundTelemetry::new(timestamp, (#funcs)(&self));
-                                        let bytes = serializer.serialize_value(&nats_value)?;
-                                        serialized_pairs.push((concat!(#address, ".", stringify!(#address_endings)), bytes));
-                                    })*
-
-                                    let raw_nats_value = GroundTelemetry::new(timestamp, self);
-                                    let raw_bytes = serializer.serialize_value(&raw_nats_value)?;
-                                    serialized_pairs.push((#address, raw_bytes));
-
-                                    Ok(serialized_pairs)
-                                }
-                            }
-                        }
-                    } else {
-                        quote!{}
-                    };
-                    [
-                        quote! {
-                            #[doc = #doc]
-                            pub struct #def;
-                            impl InternalTelemetryDefinition for #def {
-                                type TMValueType = #tmty;
-                                const ID: u16 = #tm_id;
-                            }
-                            impl const TelemetryDefinition for #def {
-                                fn id(&self) -> u16 { Self::ID }
-                                fn address(&self) -> &str { #address }
-                            }
-                            #serializer_func
-                        },
-                        quote! {
-                            #tm_id => Ok(&#def_addr),
-                        },
-                        quote! {
-                            #address => Ok(&#def_addr),
-                        },
-                        quote! {
-                            #def::BYTE_SIZE,
-                        },
-                    ]
-                }
-                syn::Item::Mod(v) => {
-                    // Parse "tmm" attribute
-                    if let Some(module_id) = v
-                        .attrs
-                        .iter()
-                        .find(|attr| attr.path().is_ident(TM_MODULE_MACRO_NAME))
-                        .map(|v| {
-                            v.parse_args_with(
-                                Punctuated::<Meta, Token![,]>::parse_separated_nonempty,
-                            )
-                            .expect(&format!(
-                                "Could not parse {} attribute parameters",
-                                TM_MODULE_MACRO_NAME
-                            ))
-                            .iter()
-                            .filter_map(|m| m.require_name_value().ok())
-                            .filter(|m| m.path.get_ident().filter(|p| *p == "id").is_some())
-                            .map(|m| {
-                                if let syn::Expr::Lit(value) = &m.value {
-                                    value
-                                } else {
-                                    panic!("unexpected attribute value type")
-                                }
-                            })
-                            .map(|m| {
-                                if let syn::Lit::Int(value) = &m.lit {
-                                    value
-                                } else {
-                                    panic!("unexpected attribute value type")
-                                }
-                            })
-                            .next()
-                            .map(|lit| lit.base10_parse().unwrap())
-                        })
-                        .flatten()
-                    {
-                        if *id > module_id {
-                            panic!("like schedules, ids should only move in one direction");
-                        }
-                        *id = module_id;
-                    }
-                    let start_id = *id;
-
-                    let module_name = v.ident.clone();
-                    let mut address = address.clone();
-                    address.push(module_name.clone());
-                    let [module_content, id_getters, address_getters, byte_lengths] =
-                        generate_module_recursive(
-                            address,
-                            id,
-                            &v.content.as_ref().expect("module sould not be empty").1,
-                        );
-
-                    [
-                        quote! {
-                            pub mod #module_name {
-                                use super::*;
-                                pub const fn id_range() -> (u16, u16) {
-                                    (#start_id, #id)
-                                }
-                                pub const MAX_BYTE_SIZE: usize = {
-                                    let SIZES = [#byte_lengths];
-                                    let mut max = 0;
-                                    let mut i = 0;
-                                    while i < SIZES.len() {
-                                        if SIZES[i] > max {
-                                            max = SIZES[i];
-                                        }
-                                        i += 1;
-                                    }
-                                    max
-                                };
-                                #module_content
-                            }
-                        },
-                        id_getters,
-                        address_getters,
-                        quote! {
-                            #module_name::MAX_BYTE_SIZE,
-                        },
-                    ]
-                }
-                _ => panic!("module should only contain other modules and structs"),
-            }
+        .map(|v| match v {
+            syn::Item::Struct(v) => generate_struct(&address, id, v),
+            syn::Item::Mod(v) => generate_module_recursive(&address, id, v),
+            _ => panic!("module should only contain other modules and structs"),
         })
         .fold(from_fn(|_| TokenStream::new()), |acc, src| {
             zip(acc, src)
@@ -268,7 +270,7 @@ pub fn impl_macro(ast: syn::Item, mut id: u16, tmtc_system_address: syn::Path) -
     let id_ref = &mut id;
 
     let [module_content, id_getters, address_getters, byte_lengths] =
-        generate_module_recursive(vec![root_mod_ident.clone()], id_ref, &root_mod_content.1);
+        generate_tree(vec![root_mod_ident.clone()], id_ref, &root_mod_content.1);
 
     quote! {
         pub mod #root_mod_ident {
