@@ -93,11 +93,12 @@ fn generate_struct(
         calibrated.push_str(&doc);
     }
     let doc = format!(
-        "# {}:\ntelemetry address: {},\ncan id: {},\ncalibrated address endings:\n{}",
-        def.to_string(),
-        address,
-        tm_id,
-        &calibrated
+        "
+telemetry address: {},
+can id: {},
+calibrated address endings:
+{}",
+        address, tm_id, &calibrated
     );
 
     // Serializer func
