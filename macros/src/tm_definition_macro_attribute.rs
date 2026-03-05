@@ -93,7 +93,18 @@ fn generate_module_recursive(
                     // Parse address
                     let address = format!("{}.{}", str_base_addr, def.to_string().to_snake_case());
                     // generated documentation
-                    let doc = format!("{}: telemetry address: {}, can id: {}", def.to_string(), address, tm_id);
+                    let mut calibrated = String::new();
+                    for (i, addr) in address_endings.iter().enumerate() {
+                        let doc = format!("{}, {} \n", i, &addr.to_token_stream().to_string());
+                        calibrated.push_str(&doc);
+                    }
+                    let doc = format!("# {}: \n
+                        *telemetry address:* {}, \n
+                        *can id:* {}, \n
+                        *calibrated address endings:* \n
+                        {}",
+                        def.to_string(), address, tm_id, &calibrated
+                    );
 
                     // Serializer func
                     let serializer_func = if cfg!(feature = "ground") {
