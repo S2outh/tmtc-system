@@ -44,7 +44,7 @@ beacon!(
 
 macro_rules! to_bytes {
     ($type: ty, $tm_value:ident) => {{
-        let mut bytes = [0u8; <$type>::BYTE_SIZE];
+        let mut bytes = [0u8; <$type>::MAX_BYTE_SIZE];
         $tm_value.write(&mut bytes).unwrap();
         bytes
     }};

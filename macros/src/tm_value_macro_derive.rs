@@ -24,7 +24,7 @@ fn impl_struct(type_name: syn::Ident, tm_value_struct: syn::DataStruct) -> Token
     let struct_types = tm_value_struct.fields.iter().map(|f| &f.ty);
     quote! {
         impl TMValue for #type_name {
-            const BYTE_SIZE: usize = #(<#struct_types as TMValue>::BYTE_SIZE)+*;
+            const MAX_BYTE_SIZE: usize = #(<#struct_types as TMValue>::MAX_BYTE_SIZE)+*;
             fn read(bytes: &[u8]) -> Result<(usize, Self), TMValueError> {
                 let mut pos = 0;
                 let value = Self {
@@ -50,7 +50,7 @@ fn impl_enum(type_name: syn::Ident, tm_value_enum: syn::DataEnum) -> TokenStream
         };
         let sizes = iter
             .map(|f| parse_type_path(&f.ty))
-            .map(|ty| quote! { #ty::BYTE_SIZE });
+            .map(|ty| quote! { #ty::MAX_BYTE_SIZE });
         quote! {
             let variant_size = 1usize #(+ #sizes)*;
             if variant_size > m {
@@ -122,7 +122,7 @@ fn impl_enum(type_name: syn::Ident, tm_value_enum: syn::DataEnum) -> TokenStream
     });
     quote! {
         impl TMValue for #type_name {
-            const BYTE_SIZE: usize = {
+            const MAX_BYTE_SIZE: usize = {
                 let mut m = 0;
                 #(#enum_variant_size_cmp)*
                 m

@@ -40,8 +40,8 @@ mod telemetry {
     }
 }
 
-type PartialTestContainer = telemetry_container!(telemetry::some_other_mod);
-type FullTestContainer = telemetry_container!(telemetry);
+type PartialTestContainer = fd_compat_telemetry_container!(telemetry::some_other_mod);
+type FullTestContainer = fd_compat_telemetry_container!(telemetry);
 
 #[test]
 fn partial_container_creation() {

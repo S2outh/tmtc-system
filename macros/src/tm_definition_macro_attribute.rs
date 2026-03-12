@@ -149,7 +149,7 @@ calibrated address endings:
             #address => Ok(&#def_addr),
         },
         quote! {
-            #def::BYTE_SIZE,
+            #def::MAX_BYTE_SIZE,
         },
     ]
 }

@@ -20,6 +20,7 @@ pub use telemetry_value::TMValueError;
 // container reexports
 pub use telemetry_container::TelemetryContainer;
 pub use telemetry_container::UnsupportedValue;
+pub use telemetry_container::ceil_to_fd_compat;
 
 pub const trait TelemetryDefinition {
     fn id(&self) -> u16;
@@ -36,7 +37,7 @@ pub mod _internal {
     pub use crate::ground_tm::*;
     pub const trait InternalTelemetryDefinition: crate::TelemetryDefinition {
         type TMValueType: crate::TMValue;
-        const BYTE_SIZE: usize = Self::TMValueType::BYTE_SIZE;
+        const MAX_BYTE_SIZE: usize = Self::TMValueType::MAX_BYTE_SIZE;
         const ID: u16;
     }
 }

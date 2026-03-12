@@ -122,8 +122,8 @@ pub fn impl_macro(args: Punctuated<Meta, Token![,]>) -> TokenStream {
             }
             impl #beacon_name {
                 pub const BYTE_SIZE: usize = #header_size
-                    + <#timestamp_type as TMValue>::BYTE_SIZE
-                    + #(<#itd_paths::TMValueType as TMValue>::BYTE_SIZE)+*;
+                    + <#timestamp_type as TMValue>::MAX_BYTE_SIZE
+                    + #(<#itd_paths::TMValueType as TMValue>::MAX_BYTE_SIZE)+*;
 
                 pub fn new() -> Self {
                     Self {

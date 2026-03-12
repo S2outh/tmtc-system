@@ -6,7 +6,7 @@ pub enum TMValueError {
 
 // # Trait definitions
 pub trait TMValue {
-    const BYTE_SIZE: usize;
+    const MAX_BYTE_SIZE: usize;
     fn read(bytes: &[u8]) -> Result<(usize, Self), TMValueError>
     where
         Self: Sized;
@@ -55,21 +55,21 @@ pub mod ground_tm {
 macro_rules! primitive_value {
     ($type:ident) => {
         impl TMValue for $type {
-            const BYTE_SIZE: usize = size_of::<Self>();
+            const MAX_BYTE_SIZE: usize = size_of::<Self>();
             fn read(bytes: &[u8]) -> Result<(usize, Self), TMValueError> {
-                if bytes.len() < Self::BYTE_SIZE {
+                if bytes.len() < Self::MAX_BYTE_SIZE {
                     return Err(TMValueError::OutOfMemory);
                 }
-                let value = Self::from_le_bytes(bytes[..Self::BYTE_SIZE].try_into().unwrap());
-                Ok((Self::BYTE_SIZE, value))
+                let value = Self::from_le_bytes(bytes[..Self::MAX_BYTE_SIZE].try_into().unwrap());
+                Ok((Self::MAX_BYTE_SIZE, value))
             }
             fn write(&self, mem: &mut [u8]) -> Result<usize, TMValueError> {
-                if mem.len() < Self::BYTE_SIZE {
+                if mem.len() < Self::MAX_BYTE_SIZE {
                     return Err(TMValueError::OutOfMemory);
                 }
                 let bytes = self.to_le_bytes();
-                mem[..Self::BYTE_SIZE].copy_from_slice(&bytes);
-                Ok(Self::BYTE_SIZE)
+                mem[..Self::MAX_BYTE_SIZE].copy_from_slice(&bytes);
+                Ok(Self::MAX_BYTE_SIZE)
             }
         }
     };
@@ -94,7 +94,7 @@ primitive_value!(f64);
 
 // # Arrays
 impl<const N: usize, T: TMValue> TMValue for [T; N] {
-    const BYTE_SIZE: usize = N * T::BYTE_SIZE;
+    const MAX_BYTE_SIZE: usize = N * T::MAX_BYTE_SIZE;
     fn read(bytes: &[u8]) -> Result<(usize, Self), TMValueError> {
         unsafe {
             let mut pos = 0;
@@ -140,7 +140,7 @@ impl<const N: usize, T: TMValue> TMValue for [T; N] {
 
 // # Options
 impl<T: TMValue> TMValue for Option<T> {
-    const BYTE_SIZE: usize = 1 + T::BYTE_SIZE;
+    const MAX_BYTE_SIZE: usize = 1 + T::MAX_BYTE_SIZE;
     fn read(bytes: &[u8]) -> Result<(usize, Self), TMValueError> {
         let mut pos = 1;
         match bytes[0] {
