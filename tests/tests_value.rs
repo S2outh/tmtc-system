@@ -30,7 +30,9 @@ pub enum TestEnum {
     EmptyVar,
     FirstVar(Option<i16>),
     SecondVar(f32),
-    ThirdVar(TestValue),
+    ThirdVar {
+        test_value: TestValue,
+    },
 }
 
 #[derive(ChellValue, Default, PartialEq, Debug, Clone, Copy)]
@@ -102,7 +104,9 @@ fn chell_value_arrays() {
 
 #[test]
 fn chell_value_enums() {
-    let first_value = TestEnum::ThirdVar(TestValue { val: Some(42) });
+    let first_value = TestEnum::ThirdVar {
+        test_value: TestValue { val: Some(42) },
+    };
     let first_value_bytes: [u8; 1 + 1 + 4] = to_bytes!(TestEnum, first_value);
     let first_value_copy = TestEnum::read(&first_value_bytes).unwrap().1;
 

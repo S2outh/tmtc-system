@@ -90,8 +90,21 @@ fn impl_enum(tm_value_enum: syn::DataEnum) -> TokenStream {
                     }
                 }
             }
-            syn::Fields::Named(_) => {
-                unimplemented!("enums with named fields are currently not supported as ChellValue")
+            syn::Fields::Named(named_fields) => {
+                let field_parsers = named_fields.named.iter().map(|v| {
+                    let ty = parse_type_path(&v.ty);
+                    let field_name = &v.ident;
+                    quote! {#field_name: {
+                        let (len, value) = #ty::read(&bytes[pos..])?;
+                        pos += len;
+                        value
+                    }}
+                });
+                quote! {
+                    #index => {
+                        Self::#ident{#(#field_parsers),*}
+                    }
+                }
             }
         }
     });
@@ -121,8 +134,19 @@ fn impl_enum(tm_value_enum: syn::DataEnum) -> TokenStream {
                     }
                 }
             }
-            syn::Fields::Named(_) => {
-                unimplemented!("enums with named fields are currently not supported as ChellValue")
+            syn::Fields::Named(named_fields) => {
+                let field_idents = named_fields.named.iter().map(|v| &v.ident);
+                let field_parsers = field_idents.clone().map(|ident| {
+                    quote! {
+                        pos += #ident.write(&mut mem[pos..])?;
+                    }
+                });
+                quote! {
+                    Self::#ident{#(#field_idents),*} => {
+                        *(mem.first_mut().ok_or(ChellValueError::OutOfMemory)?) = #index;
+                        #(#field_parsers)*
+                    }
+                }
             }
         }
     });
@@ -157,7 +181,7 @@ pub fn impl_macro(ast: syn::DeriveInput) -> TokenStream {
     let body = match ast.data {
         syn::Data::Struct(tm_value_struct) => impl_struct(tm_value_struct),
         syn::Data::Enum(tm_value_enum) => impl_enum(tm_value_enum),
-        syn::Data::Union(_) => unimplemented!("unions are not supported as tmvalues"),
+        syn::Data::Union(_) => unimplemented!("unions are not supported as chell values"),
     };
 
     quote! {
