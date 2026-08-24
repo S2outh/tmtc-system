@@ -492,6 +492,7 @@ pub fn impl_macro(ast: syn::Item, mut id: u16, chell_address: syn::Path) -> Toke
     quote! {
         pub mod #root_mod_ident {
             pub const __TOOLING_METADATA: &str = #str_doc;
+            use super::*;
             use #chell_address::{*, _internal::*};
             use core::any::Any;
             #serializer_imports
