@@ -1,4 +1,3 @@
-use crate::macro_utils::parse_type_path;
 use proc_macro2::TokenStream;
 use quote::{ToTokens, quote};
 use syn::{Ident, Index};
@@ -10,10 +9,10 @@ fn impl_struct(tm_value_struct: syn::DataStruct) -> TokenStream {
             .as_ref()
             .map(Ident::to_token_stream)
             .unwrap_or(Index::from(i).to_token_stream());
-        let ty = parse_type_path(&f.ty);
+        let ty = &f.ty;
         quote! {
             #ident: {
-                let (len, value) = #ty::read(&bytes[pos..])?;
+                let (len, value) = <#ty>::read(&bytes[pos..])?;
                 pos += len;
                 value
             }
@@ -55,8 +54,8 @@ fn impl_enum(tm_value_enum: syn::DataEnum) -> TokenStream {
             syn::Fields::Named(named_fields) => Box::new(named_fields.named.iter()),
         };
         let sizes = iter
-            .map(|f| parse_type_path(&f.ty))
-            .map(|ty| quote! { #ty::MAX_BYTE_SIZE });
+            .map(|f| &f.ty)
+            .map(|ty| quote! { <#ty>::MAX_BYTE_SIZE });
         quote! {
             let variant_size = 1usize #(+ #sizes)*;
             if variant_size > m {
@@ -77,9 +76,9 @@ fn impl_enum(tm_value_enum: syn::DataEnum) -> TokenStream {
             }
             syn::Fields::Unnamed(unnamed_fields) => {
                 let field_parsers = unnamed_fields.unnamed.iter().map(|v| {
-                    let ty = parse_type_path(&v.ty);
+                    let ty = &v.ty;
                     quote! {{
-                        let (len, value) = #ty::read(&bytes[pos..])?;
+                        let (len, value) = <#ty>::read(&bytes[pos..])?;
                         pos += len;
                         value
                     }}
@@ -92,10 +91,10 @@ fn impl_enum(tm_value_enum: syn::DataEnum) -> TokenStream {
             }
             syn::Fields::Named(named_fields) => {
                 let field_parsers = named_fields.named.iter().map(|v| {
-                    let ty = parse_type_path(&v.ty);
+                    let ty = &v.ty;
                     let field_name = &v.ident;
                     quote! {#field_name: {
-                        let (len, value) = #ty::read(&bytes[pos..])?;
+                        let (len, value) = <#ty>::read(&bytes[pos..])?;
                         pos += len;
                         value
                     }}
