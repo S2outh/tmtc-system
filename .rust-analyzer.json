@@ -1,5 +1,5 @@
 {
   "cargo": {
-    "features": ["ground"]
+    "features": ["ground", "heapless", "nalgebra"]
   }
 }

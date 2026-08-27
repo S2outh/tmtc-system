@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "chell-macros"
-version = "7.7.0"
+version = "7.8.0"
 dependencies = [
  "heck",
  "proc-macro2",
