@@ -3,17 +3,17 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    flake-utils.url = "github:numtide/flake-utils";
+    systems.url = "github:nix-systems/default";
+    flake-parts.url = "github:hercules-ci/flake-parts";
     fenix.url = "github:nix-community/fenix/monthly";
   };
 
-  outputs = { self, nixpkgs, flake-utils, fenix }:
-    flake-utils.lib.eachDefaultSystem (system:
+  outputs = inputs@{ flake-parts, ... }:
+    flake-parts.lib.mkFlake { inherit inputs; } ({ ... }: {
+      systems = import inputs.systems;
+      perSystem = { pkgs, system, inputs', ... }: 
       let
-        pkgs = import nixpkgs {
-          inherit system;
-        };
-        fpkgs = fenix.packages.${system};
+        fpkgs = inputs'.fenix.packages;
         profile = fpkgs.complete;
         std-lib = fpkgs.targets.thumbv7em-none-eabihf.latest;
         rust-analyzer-nightly = fpkgs.rust-analyzer;
@@ -26,8 +26,7 @@
           profile.llvm-tools
           std-lib.rust-std
         ];
-      in
-      {
+      in {
         devShells.default =
         pkgs.mkShell {
           buildInputs = with pkgs; [
@@ -43,8 +42,10 @@
 
           # set the rust src for rust_analyzer
           RUST_SRC_PATH = "${rust-toolchain}/lib/rustlib/src/rust/library";
+          # set default defmt log level
+          DEFMT_LOG = "info";
         };
-      }
-    );
+      };
+    });
 }
 
